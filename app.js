@@ -32,7 +32,7 @@ const state = {
 };
 
 const EDITABLE_FIELDS = ["voorbeelden", "toelichting", "woordenschat"];
-const LOGIN_REQUIRED_TEXT = "Alleen lezen (login vereist voor selectie en bewerken)";
+const LOGIN_REQUIRED_TEXT = "Publiek raadplegen, selecteren en exporteren. Login vereist voor bewerken.";
 const NL_STOPWORDS = new Set([
   "de", "het", "een", "en", "van", "in", "op", "te", "met", "voor", "door", "tot", "bij", "aan", "of",
   "als", "dat", "die", "dit", "deze", "zijn", "haar", "hun", "je", "jij", "hij", "zij", "we", "wij",
@@ -84,7 +84,7 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function canModifySelectionAndNotes() {
+function canEditNotes() {
   return Boolean(state.auth.authenticated);
 }
 
@@ -162,7 +162,6 @@ async function saveSharedOverride(goalId, note) {
     if (err.status === 401) {
       state.auth.authenticated = false;
       state.auth.user = null;
-      state.selection = [];
       updateAuthUi();
       render();
       alert("Je sessie is verlopen. Log opnieuw in om te bewerken.");
@@ -245,9 +244,6 @@ async function refreshSession() {
     state.auth.authenticated = false;
     state.auth.user = null;
   }
-  if (!state.auth.authenticated) {
-    state.selection = [];
-  }
 }
 
 async function handleGoogleCredentialResponse(response) {
@@ -277,7 +273,6 @@ async function logout() {
   }
   state.auth.authenticated = false;
   state.auth.user = null;
-  state.selection = [];
   updateAuthUi();
   render();
 }
@@ -685,14 +680,11 @@ function renderFilterChips(filters) {
 }
 
 function renderResults() {
-  const canSelect = canModifySelectionAndNotes();
   els.resultCount.textContent = `${state.filtered.length} resultaten`;
   els.selectedCountTop.textContent = `${state.selection.length} geselecteerd`;
-  els.clearAllSelectedTopBtn.disabled = !canSelect || !state.selection.length;
-  els.clearAllSelectedTopBtn.title = canSelect
-    ? "Wis alle geselecteerde doelen"
-    : "Login vereist om selectie te gebruiken";
-  els.clearAllSelectedTopBtn.setAttribute("aria-label", els.clearAllSelectedTopBtn.title);
+  els.clearAllSelectedTopBtn.disabled = !state.selection.length;
+  els.clearAllSelectedTopBtn.title = "Wis alle geselecteerde doelen";
+  els.clearAllSelectedTopBtn.setAttribute("aria-label", "Wis alle geselecteerde doelen");
   els.resultList.innerHTML = "";
 
   const list = state.filtered.slice(0, 400);
@@ -702,17 +694,11 @@ function renderResults() {
     const isSelected = state.selection.includes(d.id);
     const btnClass = isSelected ? "select-btn selected" : "select-btn";
     const btnLabel = isSelected ? "🗑" : "+";
-    const btnTitle = canSelect
-      ? isSelected
-        ? "Verwijder uit selectie"
-        : "Voeg toe aan selectie"
-      : "Login vereist om selectie te gebruiken";
-    const disabledAttr = canSelect ? "" : "disabled";
-    const disabledClass = canSelect ? "" : " disabled";
+    const btnTitle = isSelected ? "Verwijder uit selectie" : "Voeg toe aan selectie";
     card.innerHTML = `
       <div class="result-item-head">
         <h3>${d.leerplandoel}</h3>
-        <button type="button" class="${btnClass}${disabledClass}" title="${btnTitle}" aria-label="${btnTitle}" ${disabledAttr}>${btnLabel}</button>
+        <button type="button" class="${btnClass}" title="${btnTitle}" aria-label="${btnTitle}">${btnLabel}</button>
       </div>
       <div class="meta-row">
         <span class="meta-tag">${d.vak}</span>
@@ -724,7 +710,6 @@ function renderResults() {
     const selectBtn = card.querySelector(".select-btn");
     selectBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (!canSelect) return;
       if (state.selection.includes(d.id)) {
         state.selection = state.selection.filter((id) => id !== d.id);
       } else {
@@ -793,7 +778,7 @@ function renderDetail() {
     els.detailView.innerHTML = '<p class="placeholder">Geen resultaat voor de huidige filters.</p>';
     return;
   }
-  const canEdit = canModifySelectionAndNotes();
+  const canEdit = canEditNotes();
   const effectiveVoorbeelden = getEffectiveField(item.id, item, "voorbeelden");
   const effectiveToelichting = getEffectiveField(item.id, item, "toelichting");
   const effectiveWoordenschat = getEffectiveField(item.id, item, "woordenschat");
@@ -837,7 +822,7 @@ function renderDetail() {
   const editBtnDisabledAttr = canEdit ? "" : "disabled";
   const readOnlyHint = canEdit
     ? ""
-    : '<p class="placeholder lock-note">Log in om selectie te maken en inhoud aan te passen.</p>';
+    : '<p class="placeholder lock-note">Log in om inhoud aan te passen.</p>';
 
   const resources = resourcesForVak(item.vak);
   const resourceHtml = resources.length
@@ -918,7 +903,7 @@ function renderDetail() {
 function bindDetailEditors(goalId) {
   const base = state.doelMap.get(goalId);
   if (!base) return;
-  if (!canModifySelectionAndNotes()) return;
+  if (!canEditNotes()) return;
   const toggleVoorbeeldenBtn = document.getElementById("toggleVoorbeeldenBtn");
   const toggleToelichtingBtn = document.getElementById("toggleToelichtingBtn");
   const toggleWoordenschatBtn = document.getElementById("toggleWoordenschatBtn");
@@ -1072,16 +1057,10 @@ function bindDetailEditors(goalId) {
 }
 
 function renderSelection() {
-  const canSelect = canModifySelectionAndNotes();
   els.selectionCount.textContent = `${state.selection.length} items`;
-  els.exportSelectionBtn.disabled = !canSelect || !state.selection.length;
-  els.exportSelectionBtn.title = canSelect ? "Exporteer naar .txt" : "Login vereist om te exporteren";
+  els.exportSelectionBtn.disabled = !state.selection.length;
+  els.exportSelectionBtn.title = "Exporteer naar .txt";
   els.selectionList.innerHTML = "";
-
-  if (!canSelect) {
-    els.selectionList.innerHTML = '<p class="placeholder">Log in om een selectie te maken en te exporteren.</p>';
-    return;
-  }
 
   if (!state.selection.length) {
     els.selectionList.innerHTML = '<p class="placeholder">Nog geen doelen toegevoegd aan de selectie.</p>';
@@ -1113,7 +1092,6 @@ function renderSelection() {
 }
 
 function exportSelectionToTxt() {
-  if (!canModifySelectionAndNotes()) return;
   if (!state.selection.length) return;
 
   const now = new Date();
@@ -1181,7 +1159,6 @@ function bindEvents() {
   });
 
   els.clearAllSelectedTopBtn.addEventListener("click", () => {
-    if (!canModifySelectionAndNotes()) return;
     state.selection = [];
     render();
   });
