@@ -1,3 +1,6 @@
 .DS_Store
 ~$*.xlsx
 .vercel
+node_modules
+.env
+.env.local

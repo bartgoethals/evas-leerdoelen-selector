@@ -8,6 +8,11 @@ const state = {
   userNotes: {},
   detailEditors: {},
   suggestionIndex: null,
+  auth: {
+    authenticated: false,
+    user: null,
+    googleClientId: "",
+  },
   filters: {
     vak: [],
     fase: [],
@@ -26,7 +31,8 @@ const state = {
   },
 };
 
-const NOTES_STORAGE_KEY = "leerdoelen_user_notes_v1";
+const EDITABLE_FIELDS = ["voorbeelden", "toelichting", "woordenschat"];
+const LOGIN_REQUIRED_TEXT = "Alleen lezen (login vereist voor selectie en bewerken)";
 const NL_STOPWORDS = new Set([
   "de", "het", "een", "en", "van", "in", "op", "te", "met", "voor", "door", "tot", "bij", "aan", "of",
   "als", "dat", "die", "dit", "deze", "zijn", "haar", "hun", "je", "jij", "hij", "zij", "we", "wij",
@@ -61,6 +67,9 @@ const els = {
   selectionCount: document.getElementById("selectionCount"),
   selectionList: document.getElementById("selectionList"),
   exportSelectionBtn: document.getElementById("exportSelectionBtn"),
+  authStatus: document.getElementById("authStatus"),
+  googleSignInHost: document.getElementById("googleSignInHost"),
+  logoutBtn: document.getElementById("logoutBtn"),
 };
 
 function uniq(values) {
@@ -73,6 +82,204 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function canModifySelectionAndNotes() {
+  return Boolean(state.auth.authenticated);
+}
+
+function sanitizeNote(note) {
+  if (!note || typeof note !== "object") return null;
+  const next = {};
+  EDITABLE_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(note, field)) {
+      next[field] = String(note[field] ?? "");
+    }
+  });
+  return Object.keys(next).length ? next : null;
+}
+
+function normalizeUserNotes(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const normalized = {};
+  Object.entries(raw).forEach(([goalId, note]) => {
+    const clean = sanitizeNote(note);
+    if (clean) normalized[goalId] = clean;
+  });
+  return normalized;
+}
+
+async function apiFetchJson(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  const init = {
+    method: options.method || "GET",
+    credentials: "include",
+    headers,
+  };
+  if (Object.prototype.hasOwnProperty.call(options, "body")) {
+    init.body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
+    init.headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(url, init);
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const message = payload?.error || `Request mislukt (${response.status})`;
+    const err = new Error(message);
+    err.status = response.status;
+    throw err;
+  }
+  return payload;
+}
+
+async function loadSharedOverrides() {
+  try {
+    const data = await apiFetchJson("/api/overrides");
+    state.userNotes = normalizeUserNotes(data?.overrides);
+  } catch (err) {
+    console.error("Kon gedeelde aanpassingen niet laden", err);
+    state.userNotes = {};
+  }
+}
+
+async function saveSharedOverride(goalId, note) {
+  const clean = sanitizeNote(note);
+  try {
+    await apiFetchJson("/api/overrides", {
+      method: "POST",
+      body: {
+        goalId,
+        note: clean,
+      },
+    });
+    return true;
+  } catch (err) {
+    if (err.status === 401) {
+      state.auth.authenticated = false;
+      state.auth.user = null;
+      state.selection = [];
+      updateAuthUi();
+      render();
+      alert("Je sessie is verlopen. Log opnieuw in om te bewerken.");
+      return false;
+    }
+    console.error("Kon aanpassing niet bewaren", err);
+    alert(err.message || "Bewaren is mislukt. Probeer opnieuw.");
+    return false;
+  }
+}
+
+function scheduleGoogleButtonRender(attempt = 0) {
+  if (state.auth.authenticated) return;
+  if (!state.auth.googleClientId || !els.googleSignInHost) return;
+  if (window.google?.accounts?.id) {
+    els.googleSignInHost.innerHTML = "";
+    window.google.accounts.id.initialize({
+      client_id: state.auth.googleClientId,
+      callback: handleGoogleCredentialResponse,
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    });
+    window.google.accounts.id.renderButton(els.googleSignInHost, {
+      theme: "outline",
+      size: "medium",
+      shape: "pill",
+      text: "signin_with",
+      locale: "nl",
+      width: 220,
+    });
+    return;
+  }
+  if (attempt >= 24) return;
+  window.setTimeout(() => scheduleGoogleButtonRender(attempt + 1), 250);
+}
+
+function updateAuthUi() {
+  const isLoggedIn = Boolean(state.auth.authenticated);
+  if (els.authStatus) {
+    if (isLoggedIn) {
+      const email = state.auth.user?.email || "onbekende gebruiker";
+      els.authStatus.textContent = `Ingelogd als ${email}`;
+    } else if (!state.auth.googleClientId) {
+      els.authStatus.textContent = `${LOGIN_REQUIRED_TEXT} (Google-login niet geconfigureerd)`;
+    } else {
+      els.authStatus.textContent = LOGIN_REQUIRED_TEXT;
+    }
+  }
+
+  if (els.logoutBtn) {
+    els.logoutBtn.classList.toggle("hidden", !isLoggedIn);
+  }
+  if (els.googleSignInHost) {
+    els.googleSignInHost.classList.toggle("hidden", isLoggedIn || !state.auth.googleClientId);
+    if (isLoggedIn) {
+      els.googleSignInHost.innerHTML = "";
+    } else {
+      scheduleGoogleButtonRender();
+    }
+  }
+}
+
+async function loadAuthConfig() {
+  try {
+    const data = await apiFetchJson("/api/config");
+    state.auth.googleClientId = String(data?.googleClientId || "");
+  } catch (err) {
+    console.error("Kon auth-config niet laden", err);
+    state.auth.googleClientId = "";
+  }
+}
+
+async function refreshSession() {
+  try {
+    const data = await apiFetchJson("/api/auth/me");
+    state.auth.authenticated = Boolean(data?.authenticated);
+    state.auth.user = data?.user || null;
+  } catch (err) {
+    console.error("Kon sessie niet laden", err);
+    state.auth.authenticated = false;
+    state.auth.user = null;
+  }
+  if (!state.auth.authenticated) {
+    state.selection = [];
+  }
+}
+
+async function handleGoogleCredentialResponse(response) {
+  const credential = response?.credential;
+  if (!credential) return;
+  try {
+    const data = await apiFetchJson("/api/auth/login", {
+      method: "POST",
+      body: { credential },
+    });
+    state.auth.authenticated = true;
+    state.auth.user = data?.user || null;
+    await loadSharedOverrides();
+    updateAuthUi();
+    render();
+  } catch (err) {
+    console.error("Aanmelden mislukt", err);
+    alert(err.message || "Aanmelden is mislukt.");
+  }
+}
+
+async function logout() {
+  try {
+    await apiFetchJson("/api/auth/logout", { method: "POST" });
+  } catch (err) {
+    console.error("Uitloggen mislukt", err);
+  }
+  state.auth.authenticated = false;
+  state.auth.user = null;
+  state.selection = [];
+  updateAuthUi();
+  render();
 }
 
 function splitSentences(text) {
@@ -473,8 +680,14 @@ function renderFilterChips(filters) {
 }
 
 function renderResults() {
+  const canSelect = canModifySelectionAndNotes();
   els.resultCount.textContent = `${state.filtered.length} resultaten`;
   els.selectedCountTop.textContent = `${state.selection.length} geselecteerd`;
+  els.clearAllSelectedTopBtn.disabled = !canSelect || !state.selection.length;
+  els.clearAllSelectedTopBtn.title = canSelect
+    ? "Wis alle geselecteerde doelen"
+    : "Login vereist om selectie te gebruiken";
+  els.clearAllSelectedTopBtn.setAttribute("aria-label", els.clearAllSelectedTopBtn.title);
   els.resultList.innerHTML = "";
 
   const list = state.filtered.slice(0, 400);
@@ -484,11 +697,17 @@ function renderResults() {
     const isSelected = state.selection.includes(d.id);
     const btnClass = isSelected ? "select-btn selected" : "select-btn";
     const btnLabel = isSelected ? "🗑" : "+";
-    const btnTitle = isSelected ? "Verwijder uit selectie" : "Voeg toe aan selectie";
+    const btnTitle = canSelect
+      ? isSelected
+        ? "Verwijder uit selectie"
+        : "Voeg toe aan selectie"
+      : "Login vereist om selectie te gebruiken";
+    const disabledAttr = canSelect ? "" : "disabled";
+    const disabledClass = canSelect ? "" : " disabled";
     card.innerHTML = `
       <div class="result-item-head">
         <h3>${d.leerplandoel}</h3>
-        <button type="button" class="${btnClass}" title="${btnTitle}" aria-label="${btnTitle}">${btnLabel}</button>
+        <button type="button" class="${btnClass}${disabledClass}" title="${btnTitle}" aria-label="${btnTitle}" ${disabledAttr}>${btnLabel}</button>
       </div>
       <div class="meta-row">
         <span class="meta-tag">${d.vak}</span>
@@ -500,6 +719,7 @@ function renderResults() {
     const selectBtn = card.querySelector(".select-btn");
     selectBtn.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (!canSelect) return;
       if (state.selection.includes(d.id)) {
         state.selection = state.selection.filter((id) => id !== d.id);
       } else {
@@ -568,12 +788,18 @@ function renderDetail() {
     els.detailView.innerHTML = '<p class="placeholder">Geen resultaat voor de huidige filters.</p>';
     return;
   }
+  const canEdit = canModifySelectionAndNotes();
   const effectiveVoorbeelden = getEffectiveField(item.id, item, "voorbeelden");
   const effectiveToelichting = getEffectiveField(item.id, item, "toelichting");
   const effectiveWoordenschat = getEffectiveField(item.id, item, "woordenschat");
   const voorbeeldenState = getEditorState(item.id, "voorbeelden", effectiveVoorbeelden);
   const toelichtingState = getEditorState(item.id, "toelichting", effectiveToelichting);
   const woordenschatState = getEditorState(item.id, "woordenschat", effectiveWoordenschat);
+  if (!canEdit) {
+    voorbeeldenState.editing = false;
+    toelichtingState.editing = false;
+    woordenschatState.editing = false;
+  }
   if (!voorbeeldenState.editing) voorbeeldenState.draft = effectiveVoorbeelden;
   if (!toelichtingState.editing) toelichtingState.draft = effectiveToelichting;
   if (!woordenschatState.editing) woordenschatState.draft = effectiveWoordenschat;
@@ -581,15 +807,32 @@ function renderDetail() {
   const voorbeeldenChanged = isFieldChanged(item.id, item, "voorbeelden", voorbeeldenState.editing);
   const toelichtingChanged = isFieldChanged(item.id, item, "toelichting", toelichtingState.editing);
   const woordenschatChanged = isFieldChanged(item.id, item, "woordenschat", woordenschatState.editing);
-  const voorbeeldenRefreshClass = voorbeeldenChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
-  const toelichtingRefreshClass = toelichtingChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
-  const woordenschatRefreshClass = woordenschatChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
+  const voorbeeldenRefreshClass = canEdit && voorbeeldenChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
+  const toelichtingRefreshClass = canEdit && toelichtingChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
+  const woordenschatRefreshClass = canEdit && woordenschatChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
   const voorbeeldenPrimary = voorbeeldenState.editing ? "💾" : "✏️";
   const toelichtingPrimary = toelichtingState.editing ? "💾" : "✏️";
   const woordenschatPrimary = woordenschatState.editing ? "💾" : "✏️";
-  const voorbeeldenPrimaryTitle = voorbeeldenState.editing ? "Bewaar voorbeelden" : "Bewerk voorbeelden";
-  const toelichtingPrimaryTitle = toelichtingState.editing ? "Bewaar toelichting" : "Bewerk toelichting";
-  const woordenschatPrimaryTitle = woordenschatState.editing ? "Bewaar woordenschat" : "Bewerk woordenschat";
+  const voorbeeldenPrimaryTitle = canEdit
+    ? voorbeeldenState.editing
+      ? "Bewaar voorbeelden"
+      : "Bewerk voorbeelden"
+    : "Login vereist om voorbeelden te bewerken";
+  const toelichtingPrimaryTitle = canEdit
+    ? toelichtingState.editing
+      ? "Bewaar toelichting"
+      : "Bewerk toelichting"
+    : "Login vereist om toelichting te bewerken";
+  const woordenschatPrimaryTitle = canEdit
+    ? woordenschatState.editing
+      ? "Bewaar woordenschat"
+      : "Bewerk woordenschat"
+    : "Login vereist om woordenschat te bewerken";
+  const editBtnClass = canEdit ? "mini-icon-btn" : "mini-icon-btn is-disabled";
+  const editBtnDisabledAttr = canEdit ? "" : "disabled";
+  const readOnlyHint = canEdit
+    ? ""
+    : '<p class="placeholder lock-note">Log in om selectie te maken en inhoud aan te passen.</p>';
 
   const resources = resourcesForVak(item.vak);
   const resourceHtml = resources.length
@@ -605,6 +848,7 @@ function renderDetail() {
       <span class="meta-tag">${item.doelsoort || "-"}</span>
       <span class="meta-tag">${item.fase || "-"}</span>
     </div>
+    ${readOnlyHint}
 
     <section class="detail-block">
       <h4>Structuur</h4>
@@ -617,12 +861,12 @@ function renderDetail() {
       <div class="detail-head">
         <h4>Voorbeelden</h4>
         <div class="detail-actions">
-          <button id="toggleVoorbeeldenBtn" class="mini-icon-btn" type="button" title="${voorbeeldenPrimaryTitle}" aria-label="${voorbeeldenPrimaryTitle}">${voorbeeldenPrimary}</button>
+          <button id="toggleVoorbeeldenBtn" class="${editBtnClass}" type="button" title="${voorbeeldenPrimaryTitle}" aria-label="${voorbeeldenPrimaryTitle}" ${editBtnDisabledAttr}>${voorbeeldenPrimary}</button>
           <button id="resetVoorbeeldenBtn" class="${voorbeeldenRefreshClass}" type="button" title="Herstel originele voorbeelden" aria-label="Herstel originele voorbeelden">↻</button>
         </div>
       </div>
       ${
-        voorbeeldenState.editing
+        canEdit && voorbeeldenState.editing
           ? `<textarea id="editVoorbeelden" class="inline-edit" rows="4" placeholder="Geen voorbeeld opgegeven.">${escapeHtml(voorbeeldenState.draft)}</textarea>`
           : `<p class="rich-text">${formatMultiline(effectiveVoorbeelden || "Geen voorbeeld opgegeven.")}</p>`
       }
@@ -632,12 +876,12 @@ function renderDetail() {
       <div class="detail-head">
         <h4>Extra toelichting (voor leerkracht)</h4>
         <div class="detail-actions">
-          <button id="toggleToelichtingBtn" class="mini-icon-btn" type="button" title="${toelichtingPrimaryTitle}" aria-label="${toelichtingPrimaryTitle}">${toelichtingPrimary}</button>
+          <button id="toggleToelichtingBtn" class="${editBtnClass}" type="button" title="${toelichtingPrimaryTitle}" aria-label="${toelichtingPrimaryTitle}" ${editBtnDisabledAttr}>${toelichtingPrimary}</button>
           <button id="resetToelichtingBtn" class="${toelichtingRefreshClass}" type="button" title="Herstel originele toelichting" aria-label="Herstel originele toelichting">↻</button>
         </div>
       </div>
       ${
-        toelichtingState.editing
+        canEdit && toelichtingState.editing
           ? `<textarea id="editToelichting" class="inline-edit" rows="4" placeholder="Geen extra toelichting opgegeven.">${escapeHtml(toelichtingState.draft)}</textarea>`
           : `<p class="rich-text">${formatMultiline(effectiveToelichting || "Geen extra toelichting opgegeven.")}</p>`
       }
@@ -647,12 +891,12 @@ function renderDetail() {
       <div class="detail-head">
         <h4>Woordenschat (voor kinderen)</h4>
         <div class="detail-actions">
-          <button id="toggleWoordenschatBtn" class="mini-icon-btn" type="button" title="${woordenschatPrimaryTitle}" aria-label="${woordenschatPrimaryTitle}">${woordenschatPrimary}</button>
+          <button id="toggleWoordenschatBtn" class="${editBtnClass}" type="button" title="${woordenschatPrimaryTitle}" aria-label="${woordenschatPrimaryTitle}" ${editBtnDisabledAttr}>${woordenschatPrimary}</button>
           <button id="resetWoordenschatBtn" class="${woordenschatRefreshClass}" type="button" title="Herstel originele woordenschat" aria-label="Herstel originele woordenschat">↻</button>
         </div>
       </div>
       ${
-        woordenschatState.editing
+        canEdit && woordenschatState.editing
           ? `<textarea id="editWoordenschat" class="inline-edit" rows="3" placeholder="Geen woordenschat opgegeven.">${escapeHtml(woordenschatState.draft)}</textarea>`
           : `<p>${escapeHtml(effectiveWoordenschat || "Geen woordenschat opgegeven.")}</p>`
       }
@@ -666,39 +910,10 @@ function renderDetail() {
   bindDetailEditors(item.id);
 }
 
-function saveNotesToStorage() {
-  try {
-    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(state.userNotes));
-  } catch (err) {
-    console.error("Kon notities niet opslaan", err);
-  }
-}
-
-function loadNotesFromStorage() {
-  try {
-    const raw = localStorage.getItem(NOTES_STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      const normalized = {};
-      Object.entries(parsed).forEach(([goalId, note]) => {
-        if (!note || typeof note !== "object") return;
-        const next = {};
-        if (Object.prototype.hasOwnProperty.call(note, "voorbeelden")) next.voorbeelden = String(note.voorbeelden ?? "");
-        if (Object.prototype.hasOwnProperty.call(note, "toelichting")) next.toelichting = String(note.toelichting ?? "");
-        if (Object.prototype.hasOwnProperty.call(note, "woordenschat")) next.woordenschat = String(note.woordenschat ?? "");
-        normalized[goalId] = next;
-      });
-      state.userNotes = normalized;
-    }
-  } catch (err) {
-    console.error("Kon notities niet laden", err);
-  }
-}
-
 function bindDetailEditors(goalId) {
   const base = state.doelMap.get(goalId);
   if (!base) return;
+  if (!canModifySelectionAndNotes()) return;
   const toggleVoorbeeldenBtn = document.getElementById("toggleVoorbeeldenBtn");
   const toggleToelichtingBtn = document.getElementById("toggleToelichtingBtn");
   const toggleWoordenschatBtn = document.getElementById("toggleWoordenschatBtn");
@@ -710,7 +925,7 @@ function bindDetailEditors(goalId) {
   const woordenschatEl = document.getElementById("editWoordenschat");
 
   const setFieldValue = (field, value) => {
-    if (!state.userNotes[goalId]) state.userNotes[goalId] = { voorbeelden: "", toelichting: "", woordenschat: "" };
+    if (!state.userNotes[goalId]) state.userNotes[goalId] = {};
     state.userNotes[goalId][field] = value.trim();
     const note = state.userNotes[goalId];
     const effectiveNote = {
@@ -731,87 +946,98 @@ function bindDetailEditors(goalId) {
     ) {
       delete state.userNotes[goalId];
     }
-    saveNotesToStorage();
   };
 
   if (toggleVoorbeeldenBtn) {
-    toggleVoorbeeldenBtn.addEventListener("click", () => {
+    toggleVoorbeeldenBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].voorbeelden;
       if (!editor.editing) {
         editor.editing = true;
         editor.draft = getEffectiveField(goalId, base, "voorbeelden");
+        renderDetail();
       } else {
         setFieldValue("voorbeelden", editor.draft);
-        editor.editing = false;
+        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+        if (saved) {
+          editor.editing = false;
+        }
+        render();
       }
-      renderDetail();
     });
   }
 
   if (toggleToelichtingBtn) {
-    toggleToelichtingBtn.addEventListener("click", () => {
+    toggleToelichtingBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].toelichting;
       if (!editor.editing) {
         editor.editing = true;
         editor.draft = getEffectiveField(goalId, base, "toelichting");
+        renderDetail();
       } else {
         setFieldValue("toelichting", editor.draft);
-        editor.editing = false;
+        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+        if (saved) {
+          editor.editing = false;
+        }
+        render();
       }
-      renderDetail();
     });
   }
 
   if (toggleWoordenschatBtn) {
-    toggleWoordenschatBtn.addEventListener("click", () => {
+    toggleWoordenschatBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].woordenschat;
       if (!editor.editing) {
         editor.editing = true;
         editor.draft = getEffectiveField(goalId, base, "woordenschat");
+        renderDetail();
       } else {
         setFieldValue("woordenschat", editor.draft);
-        editor.editing = false;
+        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+        if (saved) {
+          editor.editing = false;
+        }
+        render();
       }
-      renderDetail();
     });
   }
 
   if (resetVoorbeeldenBtn) {
-    resetVoorbeeldenBtn.addEventListener("click", () => {
+    resetVoorbeeldenBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].voorbeelden;
       editor.draft = getOriginalField(base, "voorbeelden");
-      editor.editing = false;
-      if (state.userNotes[goalId]) {
-        state.userNotes[goalId].voorbeelden = getOriginalField(base, "voorbeelden");
-      }
       setFieldValue("voorbeelden", getOriginalField(base, "voorbeelden"));
-      render();
+      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+      if (saved) {
+        editor.editing = false;
+        render();
+      }
     });
   }
 
   if (resetToelichtingBtn) {
-    resetToelichtingBtn.addEventListener("click", () => {
+    resetToelichtingBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].toelichting;
       editor.draft = getOriginalField(base, "toelichting");
-      editor.editing = false;
-      if (state.userNotes[goalId]) {
-        state.userNotes[goalId].toelichting = getOriginalField(base, "toelichting");
-      }
       setFieldValue("toelichting", getOriginalField(base, "toelichting"));
-      render();
+      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+      if (saved) {
+        editor.editing = false;
+        render();
+      }
     });
   }
 
   if (resetWoordenschatBtn) {
-    resetWoordenschatBtn.addEventListener("click", () => {
+    resetWoordenschatBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].woordenschat;
       editor.draft = getOriginalField(base, "woordenschat");
-      editor.editing = false;
-      if (state.userNotes[goalId]) {
-        state.userNotes[goalId].woordenschat = getOriginalField(base, "woordenschat");
-      }
       setFieldValue("woordenschat", getOriginalField(base, "woordenschat"));
-      render();
+      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+      if (saved) {
+        editor.editing = false;
+        render();
+      }
     });
   }
 
@@ -841,8 +1067,16 @@ function bindDetailEditors(goalId) {
 }
 
 function renderSelection() {
+  const canSelect = canModifySelectionAndNotes();
   els.selectionCount.textContent = `${state.selection.length} items`;
+  els.exportSelectionBtn.disabled = !canSelect || !state.selection.length;
+  els.exportSelectionBtn.title = canSelect ? "Exporteer naar .txt" : "Login vereist om te exporteren";
   els.selectionList.innerHTML = "";
+
+  if (!canSelect) {
+    els.selectionList.innerHTML = '<p class="placeholder">Log in om een selectie te maken en te exporteren.</p>';
+    return;
+  }
 
   if (!state.selection.length) {
     els.selectionList.innerHTML = '<p class="placeholder">Nog geen doelen toegevoegd aan de selectie.</p>';
@@ -874,6 +1108,7 @@ function renderSelection() {
 }
 
 function exportSelectionToTxt() {
+  if (!canModifySelectionAndNotes()) return;
   if (!state.selection.length) return;
 
   const now = new Date();
@@ -941,11 +1176,18 @@ function bindEvents() {
   });
 
   els.clearAllSelectedTopBtn.addEventListener("click", () => {
+    if (!canModifySelectionAndNotes()) return;
     state.selection = [];
     render();
   });
 
   els.exportSelectionBtn.addEventListener("click", exportSelectionToTxt);
+  els.logoutBtn?.addEventListener("click", logout);
+  window.addEventListener("load", () => {
+    if (!state.auth.authenticated) {
+      scheduleGoogleButtonRender();
+    }
+  });
 
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".multi-dropdown")) {
@@ -962,7 +1204,10 @@ async function init() {
   state.doelMap = new Map(state.doelen.map((d) => [d.id, d]));
   state.suggestionIndex = buildSuggestionIndex(state.doelen);
   state.bronnen = data.bronnen || [];
-  loadNotesFromStorage();
+  await loadSharedOverrides();
+  await loadAuthConfig();
+  await refreshSession();
+  updateAuthUi();
 
   if (els.metaStats) {
     els.metaStats.innerHTML = `

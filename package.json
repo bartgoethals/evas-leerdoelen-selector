@@ -1,0 +1,13 @@
+{
+  "name": "evas-leerdoelen-selector",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Eva's Leerdoelen Selector",
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0",
+    "google-auth-library": "^9.15.1"
+  }
+}

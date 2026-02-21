@@ -53,6 +53,30 @@ body {
   flex: 0 0 auto;
 }
 
+.auth-box {
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: .35rem;
+  min-width: 16rem;
+}
+
+.auth-status {
+  margin: 0;
+  font-size: .78rem;
+  color: #2c4a3b;
+  text-align: right;
+}
+
+.google-signin-host {
+  min-height: 40px;
+}
+
+.auth-box .ghost-btn {
+  width: auto;
+  min-width: 7rem;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -144,11 +168,12 @@ h1 {
 
 .filters {
   overflow-x: hidden;
-  overflow-y: hidden;
+  overflow-y: auto;
 }
 
 .detail {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .results {
@@ -305,6 +330,11 @@ textarea:focus {
   cursor: pointer;
 }
 
+.ghost-btn:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
 .results-top {
   border-bottom: 1px solid var(--border);
   padding: .85rem 1rem;
@@ -453,6 +483,12 @@ textarea:focus {
   line-height: 1;
 }
 
+.select-btn:disabled,
+.select-btn.disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
 .select-btn.selected {
   background: #fff3f1;
   border-color: #f0c0b9;
@@ -471,6 +507,11 @@ textarea:focus {
   place-items: center;
   cursor: pointer;
   font-size: .95rem;
+}
+
+.icon-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
 }
 
 .meta-row {
@@ -625,6 +666,12 @@ textarea:focus {
   display: none;
 }
 
+.mini-icon-btn.is-disabled,
+.mini-icon-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 .detail-block p {
   margin: 0;
   color: #263a31;
@@ -665,6 +712,15 @@ textarea:focus {
 
 .placeholder {
   color: var(--muted);
+}
+
+.lock-note {
+  margin: .2rem 0 .25rem;
+  font-size: .82rem;
+}
+
+.hidden {
+  display: none !important;
 }
 
 @media (max-height: 760px) {
@@ -743,6 +799,15 @@ textarea:focus {
 
   .topbar {
     flex-direction: column;
+  }
+
+  .auth-box {
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .auth-status {
+    text-align: left;
   }
 
   .brand-logo {
