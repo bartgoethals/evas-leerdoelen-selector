@@ -46,7 +46,7 @@ const NON_CHILD_WORDS = new Set([
 ]);
 
 const FILTER_DEFS = [
-  { key: "vak", prop: "vak", el: "vakFilter", allLabel: "Alle vakken" },
+  { key: "vak", prop: "vak", el: "vakFilter", allLabel: "Alle disciplines" },
   { key: "fase", prop: "fase", el: "faseFilter", allLabel: "Alle fases" },
   { key: "domein", prop: "domein", el: "domeinFilter", allLabel: "Alle domeinen" },
   { key: "subdomein", prop: "subdomein", el: "subdomeinFilter", allLabel: "Alle subdomeinen" },
@@ -641,12 +641,17 @@ function renderFilterChips(filters) {
     return Boolean(value);
   });
 
+  const filterLabel = (key) => {
+    if (key === "vak") return "Discipline";
+    return key;
+  };
+
   function makeChip(key, value) {
     const chip = document.createElement("span");
     chip.className = "chip removable";
 
     const text = document.createElement("span");
-    text.textContent = `${key}: ${value}`;
+    text.textContent = `${filterLabel(key)}: ${value}`;
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
@@ -1135,7 +1140,7 @@ function exportSelectionToTxt() {
         ? String(own.woordenschat ?? "")
         : g.woordenschat || "";
     lines.push(`${index + 1}. ${g.leerplandoel}`);
-    lines.push(`   Vak: ${g.vak}`);
+    lines.push(`   Discipline: ${g.vak}`);
     lines.push(`   Fase: ${g.fase || "-"}`);
     lines.push(`   Domein: ${g.domein || "-"}`);
     lines.push(`   Subdomein: ${g.subdomein || "-"}`);
