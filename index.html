@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eva's Leerdoelen Selector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="background-glow" aria-hidden="true"></div>
+  <header class="topbar">
+    <div class="brand">
+      <img src="eva.png" alt="Eva logo" class="brand-logo" />
+      <div class="brand-text">
+        <p class="eyebrow">Nieuwe leerplandoelen</p>
+        <h1>Eva's Leerdoelen Selector</h1>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel filters" aria-label="Filters">
+      <div class="search-wrap">
+        <label for="searchInput">Zoeken</label>
+        <input id="searchInput" type="search" placeholder="Domein, leerplandoel, voorbeeld..." />
+      </div>
+
+      <div class="filter-group">
+        <label>Vak</label>
+        <div id="vakFilter" class="multi-dropdown" data-filter="vak"></div>
+      </div>
+      <div class="filter-group">
+        <label>Fase</label>
+        <div id="faseFilter" class="multi-dropdown" data-filter="fase"></div>
+      </div>
+      <div class="filter-group">
+        <label>Domein</label>
+        <div id="domeinFilter" class="multi-dropdown" data-filter="domein"></div>
+      </div>
+      <div class="filter-group">
+        <label>Subdomein</label>
+        <div id="subdomeinFilter" class="multi-dropdown" data-filter="subdomein"></div>
+      </div>
+      <div class="filter-group">
+        <label>Cluster</label>
+        <div id="clusterFilter" class="multi-dropdown" data-filter="cluster"></div>
+      </div>
+      <div class="filter-group">
+        <label>Doel-soort</label>
+        <div id="doelsoortFilter" class="multi-dropdown" data-filter="doelsoort"></div>
+      </div>
+      <button id="resetFilters" class="ghost-btn" type="button">Filters wissen</button>
+    </aside>
+
+    <section class="panel results" aria-live="polite">
+      <div class="results-top">
+        <div class="results-head">
+          <p id="resultCount">0 resultaten</p>
+          <div class="selected-top">
+            <p id="selectedCountTop" class="marked-count">0 geselecteerd</p>
+            <button id="clearAllSelectedTopBtn" class="icon-btn" type="button" title="Wis alle geselecteerde doelen" aria-label="Wis alle geselecteerde doelen">🗑</button>
+          </div>
+        </div>
+        <div id="activeFilters" class="chips"></div>
+      </div>
+      <div id="resultList" class="result-list"></div>
+    </section>
+
+    <aside class="panel detail" aria-label="Detail">
+      <div id="detailView" class="detail-content">
+        <p class="placeholder">Kies een doel om de details te bekijken.</p>
+      </div>
+      <section class="selection-panel">
+        <div class="selection-head">
+          <h3>Jouw selectie</h3>
+          <p id="selectionCount">0 items</p>
+        </div>
+        <div class="selection-actions">
+          <button id="exportSelectionBtn" class="ghost-btn small" type="button">Exporteer naar .txt</button>
+        </div>
+        <div id="selectionList" class="selection-list"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
