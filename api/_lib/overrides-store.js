@@ -1,26 +1,41 @@
 const EDITABLE_FIELDS = ["voorbeelden", "toelichting", "woordenschat"];
 
-let sql = null;
+let neon = null;
 try {
-  ({ sql } = require("@vercel/postgres"));
+  ({ neon } = require("@neondatabase/serverless"));
 } catch {
-  sql = null;
+  neon = null;
 }
 
-const TABLE_NAME = "goal_overrides";
 let ensureSchemaPromise = null;
+let neonSql = null;
 
-function hasPostgresConfig() {
-  return Boolean(
+function resolveDatabaseUrl() {
+  return (
+    process.env.DATABASE_URL ||
     process.env.POSTGRES_URL ||
-      process.env.POSTGRES_PRISMA_URL ||
-      process.env.POSTGRES_URL_NON_POOLING ||
-      process.env.DATABASE_URL
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    ""
   );
 }
 
+function hasPostgresConfig() {
+  return Boolean(resolveDatabaseUrl());
+}
+
+function getSql() {
+  if (!neon) return null;
+  if (!neonSql) {
+    const dbUrl = resolveDatabaseUrl();
+    if (!dbUrl) return null;
+    neonSql = neon(dbUrl);
+  }
+  return neonSql;
+}
+
 function isPersistentStoreConfigured() {
-  return Boolean(sql && hasPostgresConfig());
+  return Boolean(getSql() && hasPostgresConfig());
 }
 
 function allowMemoryFallback() {
@@ -69,6 +84,7 @@ async function ensureSchema() {
   if (!isPersistentStoreConfigured()) {
     throw new Error("Persistente opslag is niet geconfigureerd.");
   }
+  const sql = getSql();
   if (!ensureSchemaPromise) {
     ensureSchemaPromise = sql`
       CREATE TABLE IF NOT EXISTS goal_overrides (
@@ -84,10 +100,11 @@ async function ensureSchema() {
 
 async function readOverrides() {
   if (isPersistentStoreConfigured()) {
+    const sql = getSql();
     await ensureSchema();
-    const result = await sql`SELECT goal_id, note FROM goal_overrides`;
+    const rows = await sql`SELECT goal_id, note FROM goal_overrides`;
     const overrides = {};
-    result.rows.forEach((row) => {
+    rows.forEach((row) => {
       const clean = sanitizeNote(parseDbNote(row.note));
       if (clean) overrides[String(row.goal_id)] = clean;
     });
@@ -108,6 +125,7 @@ async function setOverride(goalId, note, updatedByEmail = null) {
   const cleanNote = sanitizeNote(note);
 
   if (isPersistentStoreConfigured()) {
+    const sql = getSql();
     await ensureSchema();
     if (!cleanNote) {
       await sql`DELETE FROM goal_overrides WHERE goal_id = ${safeGoalId}`;
