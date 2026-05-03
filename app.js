@@ -12,6 +12,9 @@ const state = {
     authenticated: false,
     user: null,
     googleClientId: "",
+    docsScopesGranted: null,
+    googleDocsAccessToken: "",
+    googleDocsAccessTokenExpiresAt: 0,
   },
   filters: {
     vak: [],
@@ -33,6 +36,10 @@ const state = {
 
 const EDITABLE_FIELDS = ["voorbeelden", "toelichting", "woordenschat"];
 const LOGIN_REQUIRED_TEXT = "Publiek raadplegen, selecteren en exporteren. Login vereist voor bewerken.";
+const GOOGLE_DOCS_DRIVE_SCOPES = [
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/drive.file",
+];
 const NL_STOPWORDS = new Set([
   "de", "het", "een", "en", "van", "in", "op", "te", "met", "voor", "door", "tot", "bij", "aan", "of",
   "als", "dat", "die", "dit", "deze", "zijn", "haar", "hun", "je", "jij", "hij", "zij", "we", "wij",
@@ -172,6 +179,78 @@ async function saveSharedOverride(goalId, note) {
   }
 }
 
+function hasAllGrantedScopes(tokenResponse, scopes) {
+  const oauth2 = window.google?.accounts?.oauth2;
+  if (oauth2?.hasGrantedAllScopes) {
+    return oauth2.hasGrantedAllScopes(tokenResponse, ...scopes);
+  }
+  const granted = new Set(
+    String(tokenResponse?.scope || "")
+      .split(/\s+/)
+      .filter(Boolean)
+  );
+  return scopes.every((scope) => granted.has(scope));
+}
+
+async function requestDocsDriveConsentAtLogin() {
+  return new Promise((resolve) => {
+    const oauth2 = window.google?.accounts?.oauth2;
+    if (!state.auth.googleClientId || !oauth2?.initTokenClient) {
+      state.auth.docsScopesGranted = false;
+      state.auth.googleDocsAccessToken = "";
+      state.auth.googleDocsAccessTokenExpiresAt = 0;
+      resolve(false);
+      return;
+    }
+
+    const client = oauth2.initTokenClient({
+      client_id: state.auth.googleClientId,
+      scope: GOOGLE_DOCS_DRIVE_SCOPES.join(" "),
+      include_granted_scopes: true,
+      callback: (tokenResponse) => {
+        if (tokenResponse?.error) {
+          state.auth.docsScopesGranted = false;
+          state.auth.googleDocsAccessToken = "";
+          state.auth.googleDocsAccessTokenExpiresAt = 0;
+          resolve(false);
+          return;
+        }
+
+        const granted = hasAllGrantedScopes(tokenResponse, GOOGLE_DOCS_DRIVE_SCOPES);
+        state.auth.docsScopesGranted = granted;
+        if (granted && tokenResponse?.access_token) {
+          state.auth.googleDocsAccessToken = String(tokenResponse.access_token);
+          state.auth.googleDocsAccessTokenExpiresAt =
+            Date.now() + Number(tokenResponse.expires_in || 0) * 1000;
+        } else {
+          state.auth.googleDocsAccessToken = "";
+          state.auth.googleDocsAccessTokenExpiresAt = 0;
+        }
+        resolve(granted);
+      },
+      error_callback: () => {
+        state.auth.docsScopesGranted = false;
+        state.auth.googleDocsAccessToken = "";
+        state.auth.googleDocsAccessTokenExpiresAt = 0;
+        resolve(false);
+      },
+    });
+
+    try {
+      client.requestAccessToken({
+        prompt: "",
+        hint: state.auth.user?.email || undefined,
+      });
+    } catch (err) {
+      console.error("Kon Docs/Drive-toestemming niet aanvragen", err);
+      state.auth.docsScopesGranted = false;
+      state.auth.googleDocsAccessToken = "";
+      state.auth.googleDocsAccessTokenExpiresAt = 0;
+      resolve(false);
+    }
+  });
+}
+
 function scheduleGoogleButtonRender(attempt = 0) {
   if (state.auth.authenticated) return;
   if (!state.auth.googleClientId || !els.googleSignInHost) return;
@@ -202,7 +281,13 @@ function updateAuthUi() {
   if (els.authStatus) {
     if (isLoggedIn) {
       const email = state.auth.user?.email || "onbekende gebruiker";
-      els.authStatus.textContent = `Ingelogd als ${email}`;
+      const docsStatus =
+        state.auth.docsScopesGranted === true
+          ? " • Drive/Docs-toegang actief"
+          : state.auth.docsScopesGranted === false
+            ? " • Drive/Docs-toegang nog niet toegestaan"
+            : "";
+      els.authStatus.textContent = `Ingelogd als ${email}${docsStatus}`;
     } else if (!state.auth.googleClientId) {
       els.authStatus.textContent = `${LOGIN_REQUIRED_TEXT} (Google-login niet geconfigureerd)`;
     } else {
@@ -238,10 +323,16 @@ async function refreshSession() {
     const data = await apiFetchJson("/api/auth/me");
     state.auth.authenticated = Boolean(data?.authenticated);
     state.auth.user = data?.user || null;
+    state.auth.docsScopesGranted = null;
+    state.auth.googleDocsAccessToken = "";
+    state.auth.googleDocsAccessTokenExpiresAt = 0;
   } catch (err) {
     console.error("Kon sessie niet laden", err);
     state.auth.authenticated = false;
     state.auth.user = null;
+    state.auth.docsScopesGranted = null;
+    state.auth.googleDocsAccessToken = "";
+    state.auth.googleDocsAccessTokenExpiresAt = 0;
   }
 }
 
@@ -255,6 +346,13 @@ async function handleGoogleCredentialResponse(response) {
     });
     state.auth.authenticated = true;
     state.auth.user = data?.user || null;
+    state.auth.docsScopesGranted = null;
+    state.auth.googleDocsAccessToken = "";
+    state.auth.googleDocsAccessTokenExpiresAt = 0;
+    const scopesGranted = await requestDocsDriveConsentAtLogin();
+    if (!scopesGranted) {
+      console.warn("Drive/Docs-toestemming niet gegeven tijdens login.");
+    }
     await loadSharedOverrides();
     updateAuthUi();
     render();
@@ -272,6 +370,9 @@ async function logout() {
   }
   state.auth.authenticated = false;
   state.auth.user = null;
+  state.auth.docsScopesGranted = null;
+  state.auth.googleDocsAccessToken = "";
+  state.auth.googleDocsAccessTokenExpiresAt = 0;
   updateAuthUi();
   render();
 }
