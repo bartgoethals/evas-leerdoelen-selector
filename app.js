@@ -63,7 +63,6 @@ const els = {
   searchInput: document.getElementById("searchInput"),
   resetFilters: document.getElementById("resetFilters"),
   selectedCountTop: document.getElementById("selectedCountTop"),
-  clearAllSelectedTopBtn: document.getElementById("clearAllSelectedTopBtn"),
   selectionCount: document.getElementById("selectionCount"),
   selectionList: document.getElementById("selectionList"),
   exportSelectionBtn: document.getElementById("exportSelectionBtn"),
@@ -679,12 +678,21 @@ function renderFilterChips(filters) {
   });
 }
 
+function removeGoalFromSelection(goalId) {
+  state.selection = state.selection.filter((id) => id !== goalId);
+}
+
+function toggleGoalSelection(goalId) {
+  if (state.selection.includes(goalId)) {
+    removeGoalFromSelection(goalId);
+  } else {
+    state.selection.push(goalId);
+  }
+}
+
 function renderResults() {
   els.resultCount.textContent = `${state.filtered.length} resultaten`;
   els.selectedCountTop.textContent = `${state.selection.length} geselecteerd`;
-  els.clearAllSelectedTopBtn.disabled = !state.selection.length;
-  els.clearAllSelectedTopBtn.title = "Wis alle geselecteerde doelen";
-  els.clearAllSelectedTopBtn.setAttribute("aria-label", "Wis alle geselecteerde doelen");
   els.resultList.innerHTML = "";
 
   const list = state.filtered.slice(0, 400);
@@ -710,11 +718,7 @@ function renderResults() {
     const selectBtn = card.querySelector(".select-btn");
     selectBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (state.selection.includes(d.id)) {
-        state.selection = state.selection.filter((id) => id !== d.id);
-      } else {
-        state.selection.push(d.id);
-      }
+      toggleGoalSelection(d.id);
       render();
     });
 
@@ -1074,8 +1078,12 @@ function renderSelection() {
     const row = document.createElement("div");
     row.className = "selection-item";
 
+    const body = document.createElement("div");
+    body.className = "selection-item-body";
+
     const openBtn = document.createElement("button");
     openBtn.type = "button";
+    openBtn.className = "selection-open-btn";
     openBtn.textContent = goal.leerplandoel;
     openBtn.addEventListener("click", () => {
       state.selectedId = goal.id;
@@ -1085,8 +1093,22 @@ function renderSelection() {
     const meta = document.createElement("p");
     meta.textContent = `${goal.vak} • ${goal.fase || "-"}`;
 
-    row.appendChild(openBtn);
-    row.appendChild(meta);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "selection-remove-btn";
+    removeBtn.textContent = "🗑";
+    removeBtn.title = "Verwijder uit selectie";
+    removeBtn.setAttribute("aria-label", "Verwijder uit selectie");
+    removeBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      removeGoalFromSelection(goal.id);
+      render();
+    });
+
+    body.appendChild(openBtn);
+    body.appendChild(meta);
+    row.appendChild(body);
+    row.appendChild(removeBtn);
     els.selectionList.appendChild(row);
   });
 }
@@ -1156,11 +1178,6 @@ function bindEvents() {
       state.filters[def.key] = [];
     });
     applyFilters();
-  });
-
-  els.clearAllSelectedTopBtn.addEventListener("click", () => {
-    state.selection = [];
-    render();
   });
 
   els.exportSelectionBtn.addEventListener("click", exportSelectionToTxt);

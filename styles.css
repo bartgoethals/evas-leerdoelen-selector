@@ -495,25 +495,6 @@ textarea:focus {
   color: #9a2f1f;
 }
 
-.icon-btn {
-  border: 1px solid #d7bcb6;
-  background: #fff3f1;
-  color: #9a2f1f;
-  border-radius: .45rem;
-  width: 1.9rem;
-  min-width: 1.9rem;
-  height: 1.9rem;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  font-size: .95rem;
-}
-
-.icon-btn:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
 .meta-row {
   display: flex;
   flex-wrap: wrap;
@@ -580,9 +561,20 @@ textarea:focus {
   border-radius: .6rem;
   background: #fbfdfc;
   padding: .45rem .55rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .5rem;
 }
 
-.selection-item button {
+.selection-item-body {
+  min-width: 0;
+  display: grid;
+  gap: .2rem;
+  flex: 1 1 auto;
+}
+
+.selection-open-btn {
   border: 0;
   background: none;
   padding: 0;
@@ -594,14 +586,35 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
-.selection-item button:hover {
+.selection-open-btn:hover {
   text-decoration: underline;
 }
 
 .selection-item p {
-  margin: .2rem 0 0;
+  margin: 0;
   color: #4a5f55;
   font-size: .73rem;
+}
+
+.selection-remove-btn {
+  border: 1px solid #ebcdc7;
+  background: #fff4f2;
+  color: #9a2f1f;
+  border-radius: .45rem;
+  width: 1.7rem;
+  min-width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: .84rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.selection-remove-btn:hover {
+  background: #ffe9e5;
+  border-color: #e4b8b1;
 }
 
 .detail-content h2 {
