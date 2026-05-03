@@ -281,13 +281,7 @@ function updateAuthUi() {
   if (els.authStatus) {
     if (isLoggedIn) {
       const email = state.auth.user?.email || "onbekende gebruiker";
-      const docsStatus =
-        state.auth.docsScopesGranted === true
-          ? " • Drive/Docs-toegang actief"
-          : state.auth.docsScopesGranted === false
-            ? " • Drive/Docs-toegang nog niet toegestaan"
-            : "";
-      els.authStatus.textContent = `Ingelogd als ${email}${docsStatus}`;
+      els.authStatus.textContent = `Ingelogd als ${email}`;
     } else if (!state.auth.googleClientId) {
       els.authStatus.textContent = `${LOGIN_REQUIRED_TEXT} (Google-login niet geconfigureerd)`;
     } else {
@@ -344,15 +338,29 @@ async function handleGoogleCredentialResponse(response) {
       method: "POST",
       body: { credential },
     });
-    state.auth.authenticated = true;
+    state.auth.authenticated = false;
     state.auth.user = data?.user || null;
     state.auth.docsScopesGranted = null;
     state.auth.googleDocsAccessToken = "";
     state.auth.googleDocsAccessTokenExpiresAt = 0;
     const scopesGranted = await requestDocsDriveConsentAtLogin();
     if (!scopesGranted) {
-      console.warn("Drive/Docs-toestemming niet gegeven tijdens login.");
+      try {
+        await apiFetchJson("/api/auth/logout", { method: "POST" });
+      } catch (logoutErr) {
+        console.error("Kon sessie niet afsluiten na geweigerde Docs/Drive-toestemming", logoutErr);
+      }
+      state.auth.authenticated = false;
+      state.auth.user = null;
+      state.auth.docsScopesGranted = null;
+      state.auth.googleDocsAccessToken = "";
+      state.auth.googleDocsAccessTokenExpiresAt = 0;
+      updateAuthUi();
+      render();
+      alert("Inloggen vereist toestemming voor Google Docs en Drive.");
+      return;
     }
+    state.auth.authenticated = true;
     await loadSharedOverrides();
     updateAuthUi();
     render();
