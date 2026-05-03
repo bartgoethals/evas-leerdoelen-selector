@@ -73,6 +73,7 @@ const els = {
   selectionCount: document.getElementById("selectionCount"),
   selectionList: document.getElementById("selectionList"),
   exportSelectionBtn: document.getElementById("exportSelectionBtn"),
+  exportSelectionDocsBtn: document.getElementById("exportSelectionDocsBtn"),
   authStatus: document.getElementById("authStatus"),
   googleSignInHost: document.getElementById("googleSignInHost"),
   logoutBtn: document.getElementById("logoutBtn"),
@@ -1173,6 +1174,18 @@ function renderSelection() {
   els.selectionCount.textContent = `${state.selection.length} items`;
   els.exportSelectionBtn.disabled = !state.selection.length;
   els.exportSelectionBtn.title = "Exporteer naar .txt";
+  if (els.exportSelectionDocsBtn) {
+    if (!state.selection.length) {
+      els.exportSelectionDocsBtn.disabled = true;
+      els.exportSelectionDocsBtn.title = "Selecteer eerst minstens 1 leerdoel";
+    } else if (!state.auth.authenticated) {
+      els.exportSelectionDocsBtn.disabled = true;
+      els.exportSelectionDocsBtn.title = "Log in om naar Google Docs te exporteren";
+    } else {
+      els.exportSelectionDocsBtn.disabled = false;
+      els.exportSelectionDocsBtn.title = "Exporteer naar Google Docs";
+    }
+  }
   els.selectionList.innerHTML = "";
 
   if (!state.selection.length) {
@@ -1222,6 +1235,223 @@ function renderSelection() {
   });
 }
 
+function getGoalExportFields(goal) {
+  const own = state.userNotes[goal.id];
+  return {
+    voorbeelden:
+      own && Object.prototype.hasOwnProperty.call(own, "voorbeelden")
+        ? String(own.voorbeelden ?? "")
+        : goal.voorbeelden || "",
+    toelichting:
+      own && Object.prototype.hasOwnProperty.call(own, "toelichting")
+        ? String(own.toelichting ?? "")
+        : goal.extra_toelichting || goal.toelichting || "",
+    woordenschat:
+      own && Object.prototype.hasOwnProperty.call(own, "woordenschat")
+        ? String(own.woordenschat ?? "")
+        : goal.woordenschat || "",
+  };
+}
+
+async function requestDocsDriveAccessToken() {
+  if (
+    state.auth.googleDocsAccessToken &&
+    state.auth.googleDocsAccessTokenExpiresAt > Date.now() + 60 * 1000
+  ) {
+    return state.auth.googleDocsAccessToken;
+  }
+
+  return new Promise((resolve) => {
+    const oauth2 = window.google?.accounts?.oauth2;
+    if (!state.auth.googleClientId || !oauth2?.initTokenClient) {
+      resolve("");
+      return;
+    }
+
+    const client = oauth2.initTokenClient({
+      client_id: state.auth.googleClientId,
+      scope: GOOGLE_DOCS_DRIVE_SCOPES.join(" "),
+      include_granted_scopes: true,
+      callback: (tokenResponse) => {
+        if (tokenResponse?.error) {
+          resolve("");
+          return;
+        }
+        const granted = hasAllGrantedScopes(tokenResponse, GOOGLE_DOCS_DRIVE_SCOPES);
+        if (!granted || !tokenResponse?.access_token) {
+          resolve("");
+          return;
+        }
+        state.auth.docsScopesGranted = true;
+        state.auth.googleDocsAccessToken = String(tokenResponse.access_token);
+        state.auth.googleDocsAccessTokenExpiresAt =
+          Date.now() + Number(tokenResponse.expires_in || 0) * 1000;
+        resolve(state.auth.googleDocsAccessToken);
+      },
+      error_callback: () => resolve(""),
+    });
+
+    try {
+      client.requestAccessToken({
+        prompt: "",
+        hint: state.auth.user?.email || undefined,
+      });
+    } catch (err) {
+      console.error("Kon Google access token niet ophalen", err);
+      resolve("");
+    }
+  });
+}
+
+function buildSelectionDocsContent() {
+  const now = new Date();
+  const generatedAt = now.toLocaleString("nl-BE");
+  const fileName = `Selectie leerdoelen ${now.toISOString().slice(0, 10)}`;
+  let text = "";
+  let cursor = 1;
+  const headingRanges = [];
+  const boldRanges = [];
+
+  function push(raw) {
+    const value = String(raw);
+    const startIndex = cursor;
+    text += value;
+    cursor += value.length;
+    return { startIndex, endIndex: cursor };
+  }
+
+  function pushHeading(line, namedStyleType) {
+    const range = push(`${line}\n`);
+    headingRanges.push({ ...range, namedStyleType });
+  }
+
+  function pushLabelLine(label, value) {
+    const labelRange = push(`${label}: `);
+    boldRanges.push(labelRange);
+    push(`${value}\n`);
+  }
+
+  function pushFieldBlock(label, value) {
+    const clean = String(value || "").trim();
+    if (!clean) return;
+    const labelRange = push(`${label}:\n`);
+    boldRanges.push({ startIndex: labelRange.startIndex, endIndex: labelRange.endIndex - 1 });
+    push(`${clean}\n`);
+  }
+
+  pushHeading("Selectie leerdoelen", "TITLE");
+  pushLabelLine("Aangemaakt op", generatedAt);
+  push("\n");
+
+  state.selection.forEach((id, index) => {
+    const goal = state.doelMap.get(id);
+    if (!goal) return;
+    const fields = getGoalExportFields(goal);
+
+    pushHeading(`${index + 1}. ${goal.leerplandoel}`, "HEADING_2");
+    pushLabelLine("Discipline", goal.vak || "-");
+    pushLabelLine("Fase", goal.fase || "-");
+    pushLabelLine("Domein", goal.domein || "-");
+    pushLabelLine("Subdomein", goal.subdomein || "-");
+    pushLabelLine("Cluster", goal.cluster || "-");
+    pushFieldBlock("Voorbeelden", fields.voorbeelden);
+    pushFieldBlock("Extra toelichting", fields.toelichting);
+    pushFieldBlock("Woordenschat", fields.woordenschat);
+    push("\n");
+  });
+
+  return { fileName, text, headingRanges, boldRanges };
+}
+
+async function createGoogleDocFromSelection() {
+  if (!state.selection.length) return;
+  if (!state.auth.authenticated) {
+    alert("Log in om naar Google Docs te exporteren.");
+    return;
+  }
+
+  const token = await requestDocsDriveAccessToken();
+  if (!token) {
+    alert("Kon geen Google Docs-toegang verkrijgen. Log opnieuw in en probeer opnieuw.");
+    return;
+  }
+
+  const payload = buildSelectionDocsContent();
+  try {
+    const createRes = await fetch("https://docs.googleapis.com/v1/documents", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: payload.fileName }),
+    });
+    const createData = await createRes.json();
+    if (!createRes.ok) {
+      const msg = createData?.error?.message || "Onbekende fout bij aanmaak van Google Doc.";
+      throw new Error(msg);
+    }
+
+    const docId = String(createData.documentId || "");
+    if (!docId) {
+      throw new Error("Geen document-ID ontvangen van Google Docs.");
+    }
+
+    const requests = [
+      {
+        insertText: {
+          location: { index: 1 },
+          text: payload.text,
+        },
+      },
+      ...payload.headingRanges.map((range) => ({
+        updateParagraphStyle: {
+          range: {
+            startIndex: range.startIndex,
+            endIndex: range.endIndex,
+          },
+          paragraphStyle: {
+            namedStyleType: range.namedStyleType,
+          },
+          fields: "namedStyleType",
+        },
+      })),
+      ...payload.boldRanges.map((range) => ({
+        updateTextStyle: {
+          range: {
+            startIndex: range.startIndex,
+            endIndex: range.endIndex,
+          },
+          textStyle: {
+            bold: true,
+          },
+          fields: "bold",
+        },
+      })),
+    ];
+
+    const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(docId)}:batchUpdate`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests }),
+    });
+    const updateData = await updateRes.json();
+    if (!updateRes.ok) {
+      const msg = updateData?.error?.message || "Opmaak toepassen in Google Doc is mislukt.";
+      throw new Error(msg);
+    }
+
+    const docUrl = `https://docs.google.com/document/d/${docId}/edit`;
+    window.open(docUrl, "_blank", "noopener,noreferrer");
+  } catch (err) {
+    console.error("Export naar Google Docs mislukt", err);
+    alert(err.message || "Export naar Google Docs is mislukt.");
+  }
+}
+
 function exportSelectionToTxt() {
   if (!state.selection.length) return;
 
@@ -1235,28 +1465,16 @@ function exportSelectionToTxt() {
   state.selection.forEach((id, index) => {
     const g = state.doelMap.get(id);
     if (!g) return;
-    const own = state.userNotes[g.id];
-    const outVoorbeelden =
-      own && Object.prototype.hasOwnProperty.call(own, "voorbeelden")
-        ? String(own.voorbeelden ?? "")
-        : g.voorbeelden || "";
-    const outToelichting =
-      own && Object.prototype.hasOwnProperty.call(own, "toelichting")
-        ? String(own.toelichting ?? "")
-        : g.extra_toelichting || g.toelichting || "";
-    const outWoordenschat =
-      own && Object.prototype.hasOwnProperty.call(own, "woordenschat")
-        ? String(own.woordenschat ?? "")
-        : g.woordenschat || "";
+    const fields = getGoalExportFields(g);
     lines.push(`${index + 1}. ${g.leerplandoel}`);
     lines.push(`   Discipline: ${g.vak}`);
     lines.push(`   Fase: ${g.fase || "-"}`);
     lines.push(`   Domein: ${g.domein || "-"}`);
     lines.push(`   Subdomein: ${g.subdomein || "-"}`);
     lines.push(`   Cluster: ${g.cluster || "-"}`);
-    if (outVoorbeelden) lines.push(`   Voorbeelden: ${outVoorbeelden}`);
-    if (outToelichting) lines.push(`   Extra toelichting: ${outToelichting}`);
-    if (outWoordenschat) lines.push(`   Woordenschat: ${outWoordenschat}`);
+    if (fields.voorbeelden) lines.push(`   Voorbeelden: ${fields.voorbeelden}`);
+    if (fields.toelichting) lines.push(`   Extra toelichting: ${fields.toelichting}`);
+    if (fields.woordenschat) lines.push(`   Woordenschat: ${fields.woordenschat}`);
     lines.push("");
   });
 
@@ -1290,6 +1508,7 @@ function bindEvents() {
   });
 
   els.exportSelectionBtn.addEventListener("click", exportSelectionToTxt);
+  els.exportSelectionDocsBtn?.addEventListener("click", createGoogleDocFromSelection);
   els.logoutBtn?.addEventListener("click", logout);
   window.addEventListener("load", () => {
     if (!state.auth.authenticated) {

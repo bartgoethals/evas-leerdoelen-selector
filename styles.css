@@ -546,6 +546,7 @@ textarea:focus {
 
 .selection-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: .4rem;
 }
 
