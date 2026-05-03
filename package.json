@@ -9,5 +9,8 @@
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
     "google-auth-library": "^9.15.1"
+  },
+  "overrides": {
+    "uuid": "^11.1.0"
   }
 }
