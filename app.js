@@ -82,6 +82,7 @@ const els = {
   selectedCountTop: document.getElementById("selectedCountTop"),
   selectionCount: document.getElementById("selectionCount"),
   selectionList: document.getElementById("selectionList"),
+  clearSelectionBtn: document.getElementById("clearSelectionBtn"),
   exportSelectionBtn: document.getElementById("exportSelectionBtn"),
   exportVocabBtn: document.getElementById("exportVocabBtn"),
   exportSelectionDocsBtn: document.getElementById("exportSelectionDocsBtn"),
@@ -1353,6 +1354,12 @@ function bindDetailEditors(goalKey) {
 
 function renderSelection() {
   els.selectionCount.textContent = `${state.selection.length} items`;
+  if (els.clearSelectionBtn) {
+    els.clearSelectionBtn.disabled = !state.selection.length;
+    els.clearSelectionBtn.title = state.selection.length
+      ? "Verwijder alle geselecteerde leerdoelen"
+      : "Geen geselecteerde leerdoelen";
+  }
   els.exportSelectionBtn.disabled = !state.selection.length;
   els.exportSelectionBtn.title = "Exporteer naar .txt";
   if (els.exportVocabBtn) {
@@ -1973,6 +1980,17 @@ function exportVocabularyToTxt() {
   });
 }
 
+function clearSelectionWithConfirm() {
+  if (!state.selection.length) return;
+  const count = state.selection.length;
+  const confirmed = window.confirm(
+    `Ben je zeker dat je alle ${count} geselecteerde leerdoelen wilt verwijderen uit de selectie?`
+  );
+  if (!confirmed) return;
+  state.selection = [];
+  render();
+}
+
 function render() {
   renderFilterChips(getActiveFilters());
   renderResults();
@@ -1993,6 +2011,7 @@ function bindEvents() {
   });
 
   els.exportSelectionBtn.addEventListener("click", exportSelectionToTxt);
+  els.clearSelectionBtn?.addEventListener("click", clearSelectionWithConfirm);
   els.exportVocabBtn?.addEventListener("click", exportVocabularyToTxt);
   els.exportSelectionDocsBtn?.addEventListener("click", createGoogleDocFromSelection);
   els.addAllResultsBtn?.addEventListener("click", () => {
