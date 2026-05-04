@@ -77,6 +77,42 @@ body {
   min-width: 7rem;
 }
 
+.auth-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .45rem;
+}
+
+.gear-link {
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
+  border-radius: .55rem;
+  border: 1px solid #b4d7c7;
+  background: #f2fbf7;
+  color: var(--primary-strong);
+  text-decoration: none;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.gear-link:hover {
+  background: #e9f7f1;
+}
+
+.ghost-link {
+  color: #2f5643;
+  text-decoration: none;
+  font-size: .82rem;
+}
+
+.ghost-link:hover {
+  text-decoration: underline;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -618,6 +654,41 @@ textarea:focus {
   border-color: #e4b8b1;
 }
 
+.admin-page-layout {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 clamp(1rem, 3vw, 2.5rem) 1.25rem;
+  max-width: 100%;
+}
+
+.admin-page-panel {
+  padding: 1rem;
+  overflow: auto;
+}
+
+.admin-no-access h2,
+.admin-no-access p {
+  margin: 0;
+}
+
+.admin-no-access h2 {
+  font-family: "Space Grotesk", sans-serif;
+  margin-bottom: .45rem;
+}
+
+.admin-content {
+  display: grid;
+  gap: .65rem;
+}
+
+.admin-subtle {
+  margin: 0;
+  font-size: .82rem;
+  color: #405f51;
+}
+
 .admin-panel {
   border-top: 1px solid var(--border);
   margin-top: 1rem;
@@ -678,6 +749,10 @@ textarea:focus {
   gap: .4rem;
 }
 
+.admin-add-row.with-role {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
 .admin-list {
   display: grid;
   gap: .35rem;
@@ -700,6 +775,57 @@ textarea:focus {
   font-size: .82rem;
   color: #203b2e;
   overflow-wrap: anywhere;
+}
+
+.admin-account-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.admin-account-email {
+  overflow-wrap: anywhere;
+}
+
+.admin-account-actions {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.admin-role-badge {
+  border-radius: .4rem;
+  border: 1px solid #d1e3db;
+  background: #eef6f2;
+  color: #264637;
+  padding: .1rem .35rem;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.admin-role-badge.admin {
+  background: #e9f2ff;
+  border-color: #ceddf5;
+  color: #22436f;
+}
+
+.admin-role-badge.superadmin {
+  background: #fff4dc;
+  border-color: #ecd29a;
+  color: #7a5610;
+}
+
+.admin-role-select {
+  width: auto;
+  min-width: 6.5rem;
+  padding: .32rem .42rem;
+  border-radius: .45rem;
+  border: 1px solid #d4e5dd;
+  background: #fff;
+  color: #1f3e31;
 }
 
 .admin-account-lock {

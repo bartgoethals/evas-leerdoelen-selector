@@ -15,14 +15,16 @@
     <div class="brand">
       <img src="eva.png" alt="Eva logo" class="brand-logo" />
       <div class="brand-text">
-        <p class="eyebrow">Nieuwe leerplandoelen</p>
         <h1>Eva's Leerdoelen Selector</h1>
       </div>
     </div>
     <div class="auth-box">
       <p id="authStatus" class="auth-status">Publiek raadplegen, selecteren en exporteren. Login vereist voor bewerken.</p>
       <div id="googleSignInHost" class="google-signin-host"></div>
-      <button id="logoutBtn" class="ghost-btn small secondary hidden" type="button">Uitloggen</button>
+      <div class="auth-actions">
+        <a id="adminLink" class="gear-link hidden" href="admin.html" title="Admin-paneel" aria-label="Admin-paneel">⚙</a>
+        <button id="logoutBtn" class="ghost-btn small secondary hidden" type="button">Uitloggen</button>
+      </div>
     </div>
   </header>
 
@@ -86,30 +88,6 @@
         <div class="selection-actions">
           <button id="exportSelectionBtn" class="ghost-btn small" type="button">Exporteer naar .txt</button>
           <button id="exportSelectionDocsBtn" class="ghost-btn small" type="button">Exporteer naar Google Docs</button>
-        </div>
-      </section>
-
-      <section id="adminPanel" class="admin-panel hidden" aria-label="Admin">
-        <div class="admin-head">
-          <h3>Admin</h3>
-          <p>Beheer toegangsaccounts en logboek</p>
-        </div>
-
-        <div class="admin-card">
-          <h4>Toegang tot bewerken</h4>
-          <div class="admin-add-row">
-            <input id="adminNewEmailInput" type="email" placeholder="nieuw@email.be" />
-            <button id="adminAddEmailBtn" class="ghost-btn small" type="button">Toevoegen</button>
-          </div>
-          <div id="adminAccountsList" class="admin-list"></div>
-        </div>
-
-        <div class="admin-card">
-          <div class="admin-card-head">
-            <h4>Logboek</h4>
-            <button id="adminRefreshLogsBtn" class="ghost-btn small secondary" type="button">Ververs</button>
-          </div>
-          <div id="adminLogsList" class="admin-log-list"></div>
         </div>
       </section>
     </aside>

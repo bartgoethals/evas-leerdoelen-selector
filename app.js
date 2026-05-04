@@ -11,6 +11,8 @@ const state = {
   auth: {
     authenticated: false,
     isAdmin: false,
+    isSuperAdmin: false,
+    role: "editor",
     user: null,
     googleClientId: "",
     docsScopesGranted: null,
@@ -89,6 +91,7 @@ const els = {
   adminRefreshLogsBtn: document.getElementById("adminRefreshLogsBtn"),
   authStatus: document.getElementById("authStatus"),
   googleSignInHost: document.getElementById("googleSignInHost"),
+  adminLink: document.getElementById("adminLink"),
   logoutBtn: document.getElementById("logoutBtn"),
 };
 
@@ -346,6 +349,9 @@ function updateAuthUi() {
   if (els.logoutBtn) {
     els.logoutBtn.classList.toggle("hidden", !isLoggedIn);
   }
+  if (els.adminLink) {
+    els.adminLink.classList.toggle("hidden", !isAdminUser());
+  }
   if (els.googleSignInHost) {
     els.googleSignInHost.classList.toggle("hidden", isLoggedIn || !state.auth.googleClientId);
     if (isLoggedIn) {
@@ -375,6 +381,8 @@ async function refreshSession() {
     const data = await apiFetchJson("/api/auth/me");
     state.auth.authenticated = Boolean(data?.authenticated);
     state.auth.isAdmin = Boolean(data?.isAdmin);
+    state.auth.isSuperAdmin = Boolean(data?.isSuperAdmin);
+    state.auth.role = String(data?.role || "editor");
     state.auth.user = data?.user || null;
     state.auth.docsScopesGranted = null;
     state.auth.googleDocsAccessToken = "";
@@ -383,6 +391,8 @@ async function refreshSession() {
     console.error("Kon sessie niet laden", err);
     state.auth.authenticated = false;
     state.auth.isAdmin = false;
+    state.auth.isSuperAdmin = false;
+    state.auth.role = "editor";
     state.auth.user = null;
     state.auth.docsScopesGranted = null;
     state.auth.googleDocsAccessToken = "";
@@ -404,6 +414,8 @@ async function handleGoogleCredentialResponse(response) {
     });
     state.auth.authenticated = false;
     state.auth.isAdmin = Boolean(data?.isAdmin);
+    state.auth.isSuperAdmin = Boolean(data?.isSuperAdmin);
+    state.auth.role = String(data?.role || "editor");
     state.auth.user = data?.user || null;
     state.auth.docsScopesGranted = null;
     state.auth.googleDocsAccessToken = "";
@@ -417,6 +429,8 @@ async function handleGoogleCredentialResponse(response) {
       }
       state.auth.authenticated = false;
       state.auth.isAdmin = false;
+      state.auth.isSuperAdmin = false;
+      state.auth.role = "editor";
       state.auth.user = null;
       state.auth.docsScopesGranted = null;
       state.auth.googleDocsAccessToken = "";
@@ -439,6 +453,8 @@ async function handleGoogleCredentialResponse(response) {
     console.error("Aanmelden mislukt", err);
     state.auth.authenticated = false;
     state.auth.isAdmin = false;
+    state.auth.isSuperAdmin = false;
+    state.auth.role = "editor";
     state.auth.user = null;
     alert(err.message || "Aanmelden is mislukt.");
   }
@@ -452,6 +468,8 @@ async function logout() {
   }
   state.auth.authenticated = false;
   state.auth.isAdmin = false;
+  state.auth.isSuperAdmin = false;
+  state.auth.role = "editor";
   state.auth.user = null;
   state.auth.docsScopesGranted = null;
   state.auth.googleDocsAccessToken = "";

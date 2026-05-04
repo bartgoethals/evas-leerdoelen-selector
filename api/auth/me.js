@@ -1,6 +1,6 @@
 const { sendJson } = require("../_lib/http");
-const { getSessionFromRequest, isAdminEmail } = require("../_lib/session");
-const { isAllowedLoginEmail } = require("../_lib/overrides-store");
+const { getSessionFromRequest } = require("../_lib/session");
+const { getAccountAccess } = require("../_lib/overrides-store");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
@@ -12,14 +12,16 @@ module.exports = async function handler(req, res) {
   if (!session) {
     return sendJson(res, 200, { authenticated: false, user: null });
   }
-  const stillAllowed = await isAllowedLoginEmail(session.email || "");
-  if (!stillAllowed) {
+  const access = await getAccountAccess(session.email || "");
+  if (!access) {
     return sendJson(res, 200, { authenticated: false, isAdmin: false, user: null });
   }
 
   return sendJson(res, 200, {
     authenticated: true,
-    isAdmin: isAdminEmail(session.email),
+    isAdmin: Boolean(access.isAdmin),
+    isSuperAdmin: Boolean(access.isSuperAdmin),
+    role: String(access.role || "editor"),
     user: {
       email: String(session.email || ""),
       name: String(session.name || session.email || ""),

@@ -11,7 +11,7 @@ function canRevertLogEntry(entry) {
 }
 
 module.exports = async function handler(req, res) {
-  const auth = requireAdminSession(req);
+  const auth = await requireAdminSession(req);
   if (!auth.ok) {
     return sendJson(res, auth.status, { error: auth.error });
   }

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eva's Leerdoelen Selector · Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="background-glow" aria-hidden="true"></div>
+  <header class="topbar">
+    <div class="brand">
+      <img src="eva.png" alt="Eva logo" class="brand-logo" />
+      <div class="brand-text">
+        <h1>Eva's Leerdoelen Selector · Admin</h1>
+      </div>
+    </div>
+    <div class="auth-box">
+      <p id="authStatus" class="auth-status">Login vereist voor admin-toegang.</p>
+      <div id="googleSignInHost" class="google-signin-host"></div>
+      <div class="auth-actions">
+        <a class="ghost-link" href="index.html">← Terug naar selector</a>
+        <button id="logoutBtn" class="ghost-btn small secondary hidden" type="button">Uitloggen</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-page-layout">
+    <section class="panel admin-page-panel">
+      <div id="adminNoAccess" class="admin-no-access">
+        <h2>Admin-toegang vereist</h2>
+        <p>Log in met een account dat adminrechten heeft.</p>
+      </div>
+
+      <div id="adminContent" class="admin-content hidden">
+        <section class="admin-card">
+          <h3>Toegang en rollen</h3>
+          <p class="admin-subtle">Superadmins zijn vast: <strong>eva.jacobs@gmail.com</strong> en <strong>goethals@gmail.com</strong>.</p>
+          <div class="admin-add-row with-role">
+            <input id="adminNewEmailInput" type="email" placeholder="nieuw@email.be" />
+            <select id="adminNewRoleSelect" aria-label="Rol voor nieuw account">
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button id="adminAddEmailBtn" class="ghost-btn small" type="button">Toevoegen</button>
+          </div>
+          <div id="adminAccountsList" class="admin-list"></div>
+        </section>
+
+        <section class="admin-card">
+          <div class="admin-card-head">
+            <h3>Logboek</h3>
+            <button id="adminRefreshLogsBtn" class="ghost-btn small secondary" type="button">Ververs</button>
+          </div>
+          <div id="adminLogsList" class="admin-log-list"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

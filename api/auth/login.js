@@ -1,7 +1,7 @@
 const { OAuth2Client } = require("google-auth-library");
 const { sendJson, readJsonBody } = require("../_lib/http");
-const { createSessionToken, buildSessionCookie, isAdminEmail } = require("../_lib/session");
-const { isAllowedLoginEmail } = require("../_lib/overrides-store");
+const { createSessionToken, buildSessionCookie } = require("../_lib/session");
+const { getAccountAccess } = require("../_lib/overrides-store");
 
 const oauthClient = new OAuth2Client();
 
@@ -34,8 +34,8 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 403, { error: "Google-account kon niet gevalideerd worden." });
     }
 
-    const allowed = await isAllowedLoginEmail(email);
-    if (!allowed) {
+    const access = await getAccountAccess(email);
+    if (!access) {
       return sendJson(res, 403, { error: "Dit Google-account heeft geen toegang." });
     }
 
@@ -47,7 +47,13 @@ module.exports = async function handler(req, res) {
 
     const token = createSessionToken(user);
     res.setHeader("Set-Cookie", buildSessionCookie(token));
-    return sendJson(res, 200, { authenticated: true, user, isAdmin: isAdminEmail(email) });
+    return sendJson(res, 200, {
+      authenticated: true,
+      user,
+      isAdmin: Boolean(access.isAdmin),
+      isSuperAdmin: Boolean(access.isSuperAdmin),
+      role: String(access.role || "editor"),
+    });
   } catch (err) {
     console.error("Google-login mislukt", err);
     return sendJson(res, 401, { error: "Aanmelden mislukt. Probeer opnieuw." });
