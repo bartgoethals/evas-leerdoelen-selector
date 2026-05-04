@@ -239,7 +239,7 @@ async function requestDocsDriveConsentAtLogin() {
 
     try {
       client.requestAccessToken({
-        prompt: "",
+        prompt: "consent",
         hint: state.auth.user?.email || undefined,
       });
     } catch (err) {
