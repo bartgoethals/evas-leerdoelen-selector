@@ -83,6 +83,7 @@ const els = {
   selectionCount: document.getElementById("selectionCount"),
   selectionList: document.getElementById("selectionList"),
   exportSelectionBtn: document.getElementById("exportSelectionBtn"),
+  exportVocabBtn: document.getElementById("exportVocabBtn"),
   exportSelectionDocsBtn: document.getElementById("exportSelectionDocsBtn"),
   addAllResultsBtn: document.getElementById("addAllResultsBtn"),
   adminPanel: document.getElementById("adminPanel"),
@@ -1354,6 +1355,12 @@ function renderSelection() {
   els.selectionCount.textContent = `${state.selection.length} items`;
   els.exportSelectionBtn.disabled = !state.selection.length;
   els.exportSelectionBtn.title = "Exporteer naar .txt";
+  if (els.exportVocabBtn) {
+    els.exportVocabBtn.disabled = !state.selection.length;
+    els.exportVocabBtn.title = state.selection.length
+      ? "Exporteer woordenlijst naar .txt"
+      : "Selecteer eerst minstens 1 leerdoel";
+  }
   if (els.exportSelectionDocsBtn) {
     if (!state.selection.length) {
       els.exportSelectionDocsBtn.disabled = true;
@@ -1623,6 +1630,33 @@ function getGoalExportFields(goal) {
         ? String(own.woordenschat ?? "")
         : goal.woordenschat || "",
   };
+}
+
+function extractVocabularyWords(text) {
+  return String(text || "")
+    .split(/[,;\n•]+/g)
+    .map((entry) => entry.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
+
+function buildMergedVocabularySelection() {
+  const uniqueByKey = new Map();
+
+  state.selection.forEach((rowKey) => {
+    const goal = state.doelMap.get(rowKey);
+    if (!goal) return;
+    const fields = getGoalExportFields(goal);
+    extractVocabularyWords(fields.woordenschat).forEach((word) => {
+      const key = word.toLocaleLowerCase("nl-BE");
+      if (!uniqueByKey.has(key)) {
+        uniqueByKey.set(key, word);
+      }
+    });
+  });
+
+  return [...uniqueByKey.values()].sort((a, b) =>
+    a.localeCompare(b, "nl", { sensitivity: "base" })
+  );
 }
 
 function buildSelectionExportPayload(extra = {}) {
@@ -1905,6 +1939,40 @@ function exportSelectionToTxt() {
   void logExportActivity("export_txt", buildSelectionExportPayload());
 }
 
+function exportVocabularyToTxt() {
+  if (!state.selection.length) return;
+
+  const words = buildMergedVocabularySelection();
+  if (!words.length) {
+    alert("Geen woordenschat gevonden in de geselecteerde leerdoelen.");
+    return;
+  }
+
+  const now = new Date();
+  const lines = [
+    "Woordenlijst (samengevoegde selectie)",
+    `Aangemaakt op: ${now.toLocaleString("nl-BE")}`,
+    "",
+    ...words,
+  ];
+
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `woordenlijst-selectie-${now.toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+
+  void logExportActivity("export_txt", {
+    exportKind: "woordenschat",
+    selectedGoalCount: state.selection.length,
+    vocabularyCount: words.length,
+  });
+}
+
 function render() {
   renderFilterChips(getActiveFilters());
   renderResults();
@@ -1925,6 +1993,7 @@ function bindEvents() {
   });
 
   els.exportSelectionBtn.addEventListener("click", exportSelectionToTxt);
+  els.exportVocabBtn?.addEventListener("click", exportVocabularyToTxt);
   els.exportSelectionDocsBtn?.addEventListener("click", createGoogleDocFromSelection);
   els.addAllResultsBtn?.addEventListener("click", () => {
     addAllFilteredToSelection();
