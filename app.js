@@ -83,6 +83,7 @@ const els = {
   selectionList: document.getElementById("selectionList"),
   exportSelectionBtn: document.getElementById("exportSelectionBtn"),
   exportSelectionDocsBtn: document.getElementById("exportSelectionDocsBtn"),
+  addAllResultsBtn: document.getElementById("addAllResultsBtn"),
   adminPanel: document.getElementById("adminPanel"),
   adminAccountsList: document.getElementById("adminAccountsList"),
   adminNewEmailInput: document.getElementById("adminNewEmailInput"),
@@ -896,16 +897,45 @@ function toggleGoalSelection(goalId) {
   }
 }
 
+function addAllFilteredToSelection() {
+  if (!state.filtered.length) return;
+  const selectionSet = new Set(state.selection);
+  state.filtered.forEach((goal) => {
+    if (!selectionSet.has(goal.id)) {
+      selectionSet.add(goal.id);
+    }
+  });
+  state.selection = [...selectionSet];
+}
+
 function renderResults() {
+  const selectedSet = new Set(state.selection);
+  let selectedInFiltered = 0;
+  state.filtered.forEach((goal) => {
+    if (selectedSet.has(goal.id)) selectedInFiltered += 1;
+  });
+  const remainingInFiltered = Math.max(0, state.filtered.length - selectedInFiltered);
+
   els.resultCount.textContent = `${state.filtered.length} resultaten`;
   els.selectedCountTop.textContent = `${state.selection.length} geselecteerd`;
+  if (els.addAllResultsBtn) {
+    els.addAllResultsBtn.disabled = remainingInFiltered <= 0;
+    els.addAllResultsBtn.textContent =
+      state.filtered.length > 0
+        ? `Voeg alle resultaten toe (${state.filtered.length})`
+        : "Geen resultaten";
+    els.addAllResultsBtn.title =
+      remainingInFiltered > 0
+        ? `${remainingInFiltered} leerdoelen toevoegen aan selectie`
+        : "Alle resultaten zitten al in de selectie";
+  }
   els.resultList.innerHTML = "";
 
   const list = state.filtered.slice(0, 400);
   list.forEach((d) => {
     const card = document.createElement("article");
     card.className = `result-item ${d.id === state.selectedId ? "active" : ""}`;
-    const isSelected = state.selection.includes(d.id);
+    const isSelected = selectedSet.has(d.id);
     const btnClass = isSelected ? "select-btn selected" : "select-btn";
     const btnLabel = isSelected ? "🗑" : "+";
     const btnTitle = isSelected ? "Verwijder uit selectie" : "Voeg toe aan selectie";
@@ -1868,6 +1898,10 @@ function bindEvents() {
 
   els.exportSelectionBtn.addEventListener("click", exportSelectionToTxt);
   els.exportSelectionDocsBtn?.addEventListener("click", createGoogleDocFromSelection);
+  els.addAllResultsBtn?.addEventListener("click", () => {
+    addAllFilteredToSelection();
+    render();
+  });
   els.adminAddEmailBtn?.addEventListener("click", adminAddEmail);
   els.adminRefreshLogsBtn?.addEventListener("click", adminRefreshAll);
   els.adminNewEmailInput?.addEventListener("keydown", (event) => {

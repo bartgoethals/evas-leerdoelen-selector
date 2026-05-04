@@ -401,6 +401,11 @@ textarea:focus {
   gap: .45rem;
 }
 
+.results-action-btn {
+  width: auto;
+  white-space: nowrap;
+}
+
 .ghost-btn.small {
   padding: .42rem .55rem;
   font-size: .78rem;
