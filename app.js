@@ -10,11 +10,18 @@ const state = {
   suggestionIndex: null,
   auth: {
     authenticated: false,
+    isAdmin: false,
     user: null,
     googleClientId: "",
     docsScopesGranted: null,
     googleDocsAccessToken: "",
     googleDocsAccessTokenExpiresAt: 0,
+  },
+  admin: {
+    adminEmail: "",
+    allowedEmails: [],
+    logs: [],
+    loading: false,
   },
   filters: {
     vak: [],
@@ -74,6 +81,12 @@ const els = {
   selectionList: document.getElementById("selectionList"),
   exportSelectionBtn: document.getElementById("exportSelectionBtn"),
   exportSelectionDocsBtn: document.getElementById("exportSelectionDocsBtn"),
+  adminPanel: document.getElementById("adminPanel"),
+  adminAccountsList: document.getElementById("adminAccountsList"),
+  adminNewEmailInput: document.getElementById("adminNewEmailInput"),
+  adminAddEmailBtn: document.getElementById("adminAddEmailBtn"),
+  adminLogsList: document.getElementById("adminLogsList"),
+  adminRefreshLogsBtn: document.getElementById("adminRefreshLogsBtn"),
   authStatus: document.getElementById("authStatus"),
   googleSignInHost: document.getElementById("googleSignInHost"),
   logoutBtn: document.getElementById("logoutBtn"),
@@ -93,6 +106,10 @@ function escapeHtml(value) {
 
 function canEditNotes() {
   return Boolean(state.auth.authenticated);
+}
+
+function isAdminUser() {
+  return Boolean(state.auth.authenticated && state.auth.isAdmin);
 }
 
 function sanitizeNote(note) {
@@ -144,6 +161,34 @@ async function apiFetchJson(url, options = {}) {
   return payload;
 }
 
+async function loadAdminData() {
+  if (!isAdminUser()) {
+    state.admin.adminEmail = "";
+    state.admin.allowedEmails = [];
+    state.admin.logs = [];
+    state.admin.loading = false;
+    return;
+  }
+
+  state.admin.loading = true;
+  try {
+    const [accessData, logsData] = await Promise.all([
+      apiFetchJson("/api/admin/access"),
+      apiFetchJson("/api/admin/logs?limit=400"),
+    ]);
+    state.admin.allowedEmails = Array.isArray(accessData?.accounts) ? accessData.accounts : [];
+    state.admin.adminEmail = String(accessData?.adminEmail || "").toLowerCase();
+    state.admin.logs = Array.isArray(logsData?.logs) ? logsData.logs : [];
+  } catch (err) {
+    console.error("Kon admin-data niet laden", err);
+    state.admin.adminEmail = "";
+    state.admin.allowedEmails = [];
+    state.admin.logs = [];
+  } finally {
+    state.admin.loading = false;
+  }
+}
+
 async function loadSharedOverrides() {
   try {
     const data = await apiFetchJson("/api/overrides");
@@ -154,7 +199,7 @@ async function loadSharedOverrides() {
   }
 }
 
-async function saveSharedOverride(goalId, note) {
+async function saveSharedOverride(goalId, note, meta = {}) {
   const clean = sanitizeNote(note);
   try {
     await apiFetchJson("/api/overrides", {
@@ -162,13 +207,21 @@ async function saveSharedOverride(goalId, note) {
       body: {
         goalId,
         note: clean,
+        goalTitle: String(meta.goalTitle || ""),
+        goalCode: String(meta.goalCode || ""),
+        changes: Array.isArray(meta.changes) ? meta.changes : [],
       },
     });
     return true;
   } catch (err) {
-    if (err.status === 401) {
+    if (err.status === 401 || err.status === 403) {
       state.auth.authenticated = false;
+      state.auth.isAdmin = false;
       state.auth.user = null;
+      state.admin.adminEmail = "";
+      state.admin.allowedEmails = [];
+      state.admin.logs = [];
+      state.admin.loading = false;
       updateAuthUi();
       render();
       alert("Je sessie is verlopen. Log opnieuw in om te bewerken.");
@@ -301,6 +354,10 @@ function updateAuthUi() {
       scheduleGoogleButtonRender();
     }
   }
+
+  if (els.adminPanel) {
+    els.adminPanel.classList.toggle("hidden", !isAdminUser());
+  }
 }
 
 async function loadAuthConfig() {
@@ -317,6 +374,7 @@ async function refreshSession() {
   try {
     const data = await apiFetchJson("/api/auth/me");
     state.auth.authenticated = Boolean(data?.authenticated);
+    state.auth.isAdmin = Boolean(data?.isAdmin);
     state.auth.user = data?.user || null;
     state.auth.docsScopesGranted = null;
     state.auth.googleDocsAccessToken = "";
@@ -324,10 +382,15 @@ async function refreshSession() {
   } catch (err) {
     console.error("Kon sessie niet laden", err);
     state.auth.authenticated = false;
+    state.auth.isAdmin = false;
     state.auth.user = null;
     state.auth.docsScopesGranted = null;
     state.auth.googleDocsAccessToken = "";
     state.auth.googleDocsAccessTokenExpiresAt = 0;
+    state.admin.adminEmail = "";
+    state.admin.allowedEmails = [];
+    state.admin.logs = [];
+    state.admin.loading = false;
   }
 }
 
@@ -340,6 +403,7 @@ async function handleGoogleCredentialResponse(response) {
       body: { credential },
     });
     state.auth.authenticated = false;
+    state.auth.isAdmin = Boolean(data?.isAdmin);
     state.auth.user = data?.user || null;
     state.auth.docsScopesGranted = null;
     state.auth.googleDocsAccessToken = "";
@@ -352,10 +416,15 @@ async function handleGoogleCredentialResponse(response) {
         console.error("Kon sessie niet afsluiten na geweigerde Docs/Drive-toestemming", logoutErr);
       }
       state.auth.authenticated = false;
+      state.auth.isAdmin = false;
       state.auth.user = null;
       state.auth.docsScopesGranted = null;
       state.auth.googleDocsAccessToken = "";
       state.auth.googleDocsAccessTokenExpiresAt = 0;
+      state.admin.adminEmail = "";
+      state.admin.allowedEmails = [];
+      state.admin.logs = [];
+      state.admin.loading = false;
       updateAuthUi();
       render();
       alert("Inloggen vereist toestemming voor Google Docs en Drive.");
@@ -363,10 +432,14 @@ async function handleGoogleCredentialResponse(response) {
     }
     state.auth.authenticated = true;
     await loadSharedOverrides();
+    await loadAdminData();
     updateAuthUi();
     render();
   } catch (err) {
     console.error("Aanmelden mislukt", err);
+    state.auth.authenticated = false;
+    state.auth.isAdmin = false;
+    state.auth.user = null;
     alert(err.message || "Aanmelden is mislukt.");
   }
 }
@@ -378,10 +451,15 @@ async function logout() {
     console.error("Uitloggen mislukt", err);
   }
   state.auth.authenticated = false;
+  state.auth.isAdmin = false;
   state.auth.user = null;
   state.auth.docsScopesGranted = null;
   state.auth.googleDocsAccessToken = "";
   state.auth.googleDocsAccessTokenExpiresAt = 0;
+  state.admin.adminEmail = "";
+  state.admin.allowedEmails = [];
+  state.admin.logs = [];
+  state.admin.loading = false;
   updateAuthUi();
   render();
 }
@@ -1060,8 +1138,14 @@ function bindDetailEditors(goalId) {
         editor.draft = getEffectiveField(goalId, base, "voorbeelden");
         renderDetail();
       } else {
+        const beforeText = getEffectiveField(goalId, base, "voorbeelden");
+        const afterText = String(editor.draft || "").trim();
         setFieldValue("voorbeelden", editor.draft);
-        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+          goalTitle: base.leerplandoel,
+          goalCode: base.code,
+          changes: [{ field: "voorbeelden", beforeText, afterText }],
+        });
         if (saved) {
           editor.editing = false;
         }
@@ -1078,8 +1162,14 @@ function bindDetailEditors(goalId) {
         editor.draft = getEffectiveField(goalId, base, "toelichting");
         renderDetail();
       } else {
+        const beforeText = getEffectiveField(goalId, base, "toelichting");
+        const afterText = String(editor.draft || "").trim();
         setFieldValue("toelichting", editor.draft);
-        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+          goalTitle: base.leerplandoel,
+          goalCode: base.code,
+          changes: [{ field: "toelichting", beforeText, afterText }],
+        });
         if (saved) {
           editor.editing = false;
         }
@@ -1096,8 +1186,14 @@ function bindDetailEditors(goalId) {
         editor.draft = getEffectiveField(goalId, base, "woordenschat");
         renderDetail();
       } else {
+        const beforeText = getEffectiveField(goalId, base, "woordenschat");
+        const afterText = String(editor.draft || "").trim();
         setFieldValue("woordenschat", editor.draft);
-        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+          goalTitle: base.leerplandoel,
+          goalCode: base.code,
+          changes: [{ field: "woordenschat", beforeText, afterText }],
+        });
         if (saved) {
           editor.editing = false;
         }
@@ -1109,9 +1205,15 @@ function bindDetailEditors(goalId) {
   if (resetVoorbeeldenBtn) {
     resetVoorbeeldenBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].voorbeelden;
+      const beforeText = getEffectiveField(goalId, base, "voorbeelden");
+      const afterText = getOriginalField(base, "voorbeelden");
       editor.draft = getOriginalField(base, "voorbeelden");
       setFieldValue("voorbeelden", getOriginalField(base, "voorbeelden"));
-      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+        goalTitle: base.leerplandoel,
+        goalCode: base.code,
+        changes: [{ field: "voorbeelden", beforeText, afterText }],
+      });
       if (saved) {
         editor.editing = false;
         render();
@@ -1122,9 +1224,15 @@ function bindDetailEditors(goalId) {
   if (resetToelichtingBtn) {
     resetToelichtingBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].toelichting;
+      const beforeText = getEffectiveField(goalId, base, "toelichting");
+      const afterText = getOriginalField(base, "toelichting");
       editor.draft = getOriginalField(base, "toelichting");
       setFieldValue("toelichting", getOriginalField(base, "toelichting"));
-      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+        goalTitle: base.leerplandoel,
+        goalCode: base.code,
+        changes: [{ field: "toelichting", beforeText, afterText }],
+      });
       if (saved) {
         editor.editing = false;
         render();
@@ -1135,9 +1243,15 @@ function bindDetailEditors(goalId) {
   if (resetWoordenschatBtn) {
     resetWoordenschatBtn.addEventListener("click", async () => {
       const editor = state.detailEditors[goalId].woordenschat;
+      const beforeText = getEffectiveField(goalId, base, "woordenschat");
+      const afterText = getOriginalField(base, "woordenschat");
       editor.draft = getOriginalField(base, "woordenschat");
       setFieldValue("woordenschat", getOriginalField(base, "woordenschat"));
-      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null);
+      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+        goalTitle: base.leerplandoel,
+        goalCode: base.code,
+        changes: [{ field: "woordenschat", beforeText, afterText }],
+      });
       if (saved) {
         editor.editing = false;
         render();
@@ -1235,6 +1349,188 @@ function renderSelection() {
   });
 }
 
+function formatLogTimestamp(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("nl-BE");
+}
+
+function actionTypeLabel(actionType) {
+  if (actionType === "export_txt") return "export naar txt";
+  if (actionType === "export_docs") return "export naar docs";
+  if (actionType === "edit_voorbeelden") return "aanpassing voorbeelden";
+  if (actionType === "edit_toelichting") return "aanpassing extra toelichting";
+  if (actionType === "edit_woordenschat") return "aanpassing woordenschat";
+  if (actionType === "access_add") return "toegang toegevoegd";
+  if (actionType === "access_remove") return "toegang verwijderd";
+  if (actionType === "revert_version") return "herstel naar versie";
+  return actionType || "wijziging";
+}
+
+function buildExportDetailsHtml(payload) {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const count = Number(data.count || 0);
+  const items = Array.isArray(data.items) ? data.items : [];
+  const docUrl = String(data.docUrl || "").trim();
+  const header = `<p><strong>Aantal geëxporteerde doelen:</strong> ${count || items.length}</p>`;
+  const list = items.length
+    ? `<ul class=\"admin-export-list\">${items
+        .map((item) => `<li>${escapeHtml(item.leerplandoel || item.goalTitle || "-")} <span>(${escapeHtml(item.vak || "-")})</span></li>`)
+        .join("")}</ul>`
+    : "<p>Geen detailitems beschikbaar.</p>";
+  const link = docUrl
+    ? `<p><a href=\"${escapeHtml(docUrl)}\" target=\"_blank\" rel=\"noreferrer\">Open Google Doc</a></p>`
+    : "";
+  return `${header}${link}${list}`;
+}
+
+function buildLogDetailsHtml(log) {
+  const metadata = log?.metadata && typeof log.metadata === "object" ? log.metadata : {};
+
+  if (String(log.actionType || "").startsWith("edit_")) {
+    return `
+      <p><strong>Doel:</strong> ${escapeHtml(log.goalTitle || log.goalId || "-")}</p>
+      <p><strong>Veld:</strong> ${escapeHtml(actionTypeLabel(log.actionType))}</p>
+      <p><strong>Originele tekst:</strong></p>
+      <pre class="admin-log-text">${escapeHtml(log.beforeText || "")}</pre>
+      <p><strong>Aangepaste tekst:</strong></p>
+      <pre class="admin-log-text">${escapeHtml(log.afterText || "")}</pre>
+    `;
+  }
+
+  if (log.actionType === "export_txt" || log.actionType === "export_docs") {
+    return buildExportDetailsHtml(metadata.payload);
+  }
+
+  if (log.actionType === "access_add" || log.actionType === "access_remove") {
+    return `<p><strong>E-mailadres:</strong> ${escapeHtml(metadata.email || "-")}</p>`;
+  }
+
+  if (log.actionType === "revert_version") {
+    return `
+      <p><strong>Doel:</strong> ${escapeHtml(log.goalTitle || log.goalId || "-")}</p>
+      <p><strong>Hersteld vanaf log:</strong> #${escapeHtml(String(metadata.reverted_log_id || "-"))}</p>
+    `;
+  }
+
+  return `<pre class="admin-log-text">${escapeHtml(JSON.stringify(metadata, null, 2))}</pre>`;
+}
+
+function renderAdminPanel() {
+  if (!els.adminPanel) return;
+  if (!isAdminUser()) {
+    els.adminPanel.classList.add("hidden");
+    return;
+  }
+
+  els.adminPanel.classList.remove("hidden");
+
+  if (els.adminAccountsList) {
+    if (state.admin.loading) {
+      els.adminAccountsList.innerHTML = '<p class="placeholder">Admin-data laden...</p>';
+    } else if (!state.admin.allowedEmails.length) {
+      els.adminAccountsList.innerHTML = '<p class="placeholder">Geen accounts gevonden.</p>';
+    } else {
+      const ownEmail = String(state.auth.user?.email || "").toLowerCase();
+      els.adminAccountsList.innerHTML = state.admin.allowedEmails
+        .map((email) => {
+          const canRemove = email && email !== ownEmail && email !== state.admin.adminEmail;
+          return `
+            <div class="admin-account-row">
+              <span>${escapeHtml(email)}</span>
+              ${
+                canRemove
+                  ? `<button type="button" class="mini-danger-btn" data-remove-email="${escapeHtml(email)}" aria-label="Verwijder ${escapeHtml(email)}">🗑</button>`
+                  : `<span class="admin-account-lock">behouden</span>`
+              }
+            </div>
+          `;
+        })
+        .join("");
+    }
+  }
+
+  if (els.adminLogsList) {
+    if (state.admin.loading) {
+      els.adminLogsList.innerHTML = '<p class="placeholder">Logs laden...</p>';
+    } else if (!state.admin.logs.length) {
+      els.adminLogsList.innerHTML = '<p class="placeholder">Nog geen log-items.</p>';
+    } else {
+      els.adminLogsList.innerHTML = state.admin.logs
+        .map((log) => {
+          const actor = log.actorName || log.actorEmail || "onbekend";
+          const summary = `${formatLogTimestamp(log.createdAt)} • ${actor} • ${actionTypeLabel(log.actionType)}`;
+          const revertButton = log.canRevert
+            ? `<button type="button" class="ghost-btn small admin-revert-btn" data-revert-log-id="${Number(log.id)}">Herstel naar deze versie</button>`
+            : "";
+          return `
+            <details class="admin-log-item">
+              <summary>${escapeHtml(summary)}</summary>
+              <div class="admin-log-body">
+                ${buildLogDetailsHtml(log)}
+                ${revertButton}
+              </div>
+            </details>
+          `;
+        })
+        .join("");
+    }
+  }
+}
+
+async function adminRefreshAll() {
+  await loadAdminData();
+  render();
+}
+
+async function adminAddEmail() {
+  if (!isAdminUser()) return;
+  const email = String(els.adminNewEmailInput?.value || "").trim().toLowerCase();
+  if (!email) return;
+  try {
+    await apiFetchJson("/api/admin/access", {
+      method: "POST",
+      body: { email },
+    });
+    if (els.adminNewEmailInput) els.adminNewEmailInput.value = "";
+    await adminRefreshAll();
+  } catch (err) {
+    console.error("Toevoegen account mislukt", err);
+    alert(err.message || "Toevoegen van account mislukt.");
+  }
+}
+
+async function adminRemoveEmail(email) {
+  if (!isAdminUser()) return;
+  try {
+    await apiFetchJson("/api/admin/access", {
+      method: "DELETE",
+      body: { email },
+    });
+    await adminRefreshAll();
+  } catch (err) {
+    console.error("Verwijderen account mislukt", err);
+    alert(err.message || "Verwijderen van account mislukt.");
+  }
+}
+
+async function adminRevertLog(logId) {
+  if (!isAdminUser()) return;
+  try {
+    await apiFetchJson("/api/admin/revert", {
+      method: "POST",
+      body: { logId },
+    });
+    await loadSharedOverrides();
+    await loadAdminData();
+    render();
+  } catch (err) {
+    console.error("Herstellen van versie mislukt", err);
+    alert(err.message || "Herstellen van versie mislukt.");
+  }
+}
+
 function getGoalExportFields(goal) {
   const own = state.userNotes[goal.id];
   return {
@@ -1251,6 +1547,48 @@ function getGoalExportFields(goal) {
         ? String(own.woordenschat ?? "")
         : goal.woordenschat || "",
   };
+}
+
+function buildSelectionExportPayload(extra = {}) {
+  const items = state.selection
+    .map((id) => state.doelMap.get(id))
+    .filter(Boolean)
+    .map((goal) => {
+      const fields = getGoalExportFields(goal);
+      return {
+        goalId: goal.id,
+        leerplandoel: goal.leerplandoel,
+        vak: goal.vak,
+        fase: goal.fase || "-",
+        domein: goal.domein || "-",
+        subdomein: goal.subdomein || "-",
+        cluster: goal.cluster || "-",
+        voorbeelden: fields.voorbeelden || "",
+        toelichting: fields.toelichting || "",
+        woordenschat: fields.woordenschat || "",
+      };
+    });
+
+  return {
+    count: items.length,
+    items,
+    ...extra,
+  };
+}
+
+async function logExportActivity(actionType, payload) {
+  if (!state.auth.authenticated) return;
+  try {
+    await apiFetchJson("/api/activity", {
+      method: "POST",
+      body: {
+        actionType,
+        payload,
+      },
+    });
+  } catch (err) {
+    console.error("Kon export-activiteit niet loggen", err);
+  }
 }
 
 async function requestDocsDriveAccessToken() {
@@ -1445,6 +1783,7 @@ async function createGoogleDocFromSelection() {
     }
 
     const docUrl = `https://docs.google.com/document/d/${docId}/edit`;
+    await logExportActivity("export_docs", buildSelectionExportPayload({ docId, docUrl }));
     window.open(docUrl, "_blank", "noopener,noreferrer");
   } catch (err) {
     console.error("Export naar Google Docs mislukt", err);
@@ -1487,6 +1826,7 @@ function exportSelectionToTxt() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  void logExportActivity("export_txt", buildSelectionExportPayload());
 }
 
 function render() {
@@ -1494,6 +1834,7 @@ function render() {
   renderResults();
   renderDetail();
   renderSelection();
+  renderAdminPanel();
 }
 
 function bindEvents() {
@@ -1509,6 +1850,34 @@ function bindEvents() {
 
   els.exportSelectionBtn.addEventListener("click", exportSelectionToTxt);
   els.exportSelectionDocsBtn?.addEventListener("click", createGoogleDocFromSelection);
+  els.adminAddEmailBtn?.addEventListener("click", adminAddEmail);
+  els.adminRefreshLogsBtn?.addEventListener("click", adminRefreshAll);
+  els.adminNewEmailInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void adminAddEmail();
+    }
+  });
+  els.adminAccountsList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const button = target.closest("[data-remove-email]");
+    if (!(button instanceof HTMLElement)) return;
+    const email = button.dataset.removeEmail;
+    if (!email) return;
+    void adminRemoveEmail(email);
+  });
+  els.adminLogsList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const button = target.closest("[data-revert-log-id]");
+    if (!(button instanceof HTMLElement)) return;
+    const logIdRaw = button.dataset.revertLogId;
+    if (!logIdRaw) return;
+    const logId = Number(logIdRaw);
+    if (!Number.isFinite(logId) || logId <= 0) return;
+    void adminRevertLog(logId);
+  });
   els.logoutBtn?.addEventListener("click", logout);
   window.addEventListener("load", () => {
     if (!state.auth.authenticated) {
@@ -1534,6 +1903,7 @@ async function init() {
   await loadSharedOverrides();
   await loadAuthConfig();
   await refreshSession();
+  await loadAdminData();
   updateAuthUi();
 
   if (els.metaStats) {

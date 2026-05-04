@@ -88,6 +88,30 @@
           <button id="exportSelectionDocsBtn" class="ghost-btn small" type="button">Exporteer naar Google Docs</button>
         </div>
       </section>
+
+      <section id="adminPanel" class="admin-panel hidden" aria-label="Admin">
+        <div class="admin-head">
+          <h3>Admin</h3>
+          <p>Beheer toegangsaccounts en logboek</p>
+        </div>
+
+        <div class="admin-card">
+          <h4>Toegang tot bewerken</h4>
+          <div class="admin-add-row">
+            <input id="adminNewEmailInput" type="email" placeholder="nieuw@email.be" />
+            <button id="adminAddEmailBtn" class="ghost-btn small" type="button">Toevoegen</button>
+          </div>
+          <div id="adminAccountsList" class="admin-list"></div>
+        </div>
+
+        <div class="admin-card">
+          <div class="admin-card-head">
+            <h4>Logboek</h4>
+            <button id="adminRefreshLogsBtn" class="ghost-btn small secondary" type="button">Ververs</button>
+          </div>
+          <div id="adminLogsList" class="admin-log-list"></div>
+        </div>
+      </section>
     </aside>
   </main>
 

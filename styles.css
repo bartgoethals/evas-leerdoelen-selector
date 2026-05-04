@@ -618,6 +618,195 @@ textarea:focus {
   border-color: #e4b8b1;
 }
 
+.admin-panel {
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  display: grid;
+  gap: .65rem;
+}
+
+.admin-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .6rem;
+}
+
+.admin-head h3,
+.admin-head p {
+  margin: 0;
+}
+
+.admin-head h3 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1rem;
+}
+
+.admin-head p {
+  font-size: .78rem;
+  color: #3f5e50;
+}
+
+.admin-card {
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  background: #fbfdfc;
+  padding: .65rem;
+  display: grid;
+  gap: .45rem;
+}
+
+.admin-card h4 {
+  margin: 0;
+  font-size: .82rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #1f4535;
+}
+
+.admin-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+}
+
+.admin-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .4rem;
+}
+
+.admin-list {
+  display: grid;
+  gap: .35rem;
+  max-height: 10rem;
+  overflow: auto;
+}
+
+.admin-account-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .45rem;
+  border: 1px solid #dbe8e2;
+  border-radius: .55rem;
+  background: #f8fcfa;
+  padding: .35rem .45rem;
+}
+
+.admin-account-row span {
+  font-size: .82rem;
+  color: #203b2e;
+  overflow-wrap: anywhere;
+}
+
+.admin-account-lock {
+  font-size: .72rem;
+  color: #587364;
+}
+
+.mini-danger-btn {
+  border: 1px solid #e6c2bc;
+  background: #fff5f2;
+  color: #8e2e21;
+  border-radius: .45rem;
+  width: 1.55rem;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.mini-danger-btn:hover {
+  background: #ffe9e5;
+}
+
+.admin-log-list {
+  display: grid;
+  gap: .35rem;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.admin-log-item {
+  border: 1px solid #dbe8e2;
+  border-radius: .55rem;
+  background: #f8fcfa;
+  padding: .15rem .45rem .35rem;
+}
+
+.admin-log-item summary {
+  cursor: pointer;
+  font-size: .79rem;
+  color: #234335;
+  padding: .25rem 0;
+  list-style: none;
+}
+
+.admin-log-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-log-item summary::before {
+  content: "▸";
+  margin-right: .35rem;
+  color: #406655;
+}
+
+.admin-log-item[open] summary::before {
+  content: "▾";
+}
+
+.admin-log-body {
+  display: grid;
+  gap: .35rem;
+  padding-bottom: .15rem;
+}
+
+.admin-log-body p {
+  margin: 0;
+  font-size: .78rem;
+  color: #274335;
+}
+
+.admin-log-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #ffffff;
+  border: 1px solid #d9e8e1;
+  border-radius: .45rem;
+  padding: .4rem .45rem;
+  font-size: .75rem;
+  line-height: 1.45;
+  color: #1f3a2d;
+}
+
+.admin-export-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: .15rem;
+}
+
+.admin-export-list li {
+  font-size: .76rem;
+  color: #274335;
+}
+
+.admin-export-list span {
+  color: #4f665a;
+}
+
+.admin-revert-btn {
+  width: auto;
+  justify-self: start;
+}
+
 .detail-content h2 {
   margin: 0;
   font-size: 1.2rem;

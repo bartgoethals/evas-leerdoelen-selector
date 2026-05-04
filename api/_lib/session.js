@@ -3,6 +3,7 @@ const crypto = require("node:crypto");
 const SESSION_COOKIE_NAME = "eva_selector_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
 const DEFAULT_ALLOWED_EMAILS = ["goethals@gmail.com", "eva.jacobs@gmail.com"];
+const DEFAULT_ADMIN_EMAIL = "eva.jacobs@gmail.com";
 const DEV_SESSION_SECRET = "local-dev-session-secret";
 
 function getSessionSecret() {
@@ -112,6 +113,16 @@ function isAllowedEmail(email) {
   return getAllowedEmailSet().has(normalized);
 }
 
+function getAdminEmail() {
+  return String(process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
+}
+
+function isAdminEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized === getAdminEmail();
+}
+
 module.exports = {
   SESSION_COOKIE_NAME,
   createSessionToken,
@@ -120,4 +131,6 @@ module.exports = {
   buildSessionCookie,
   clearSessionCookie,
   isAllowedEmail,
+  getAdminEmail,
+  isAdminEmail,
 };
