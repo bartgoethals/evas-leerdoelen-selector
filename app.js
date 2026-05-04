@@ -49,6 +49,7 @@ const GOOGLE_DOCS_DRIVE_SCOPES = [
   "https://www.googleapis.com/auth/documents",
   "https://www.googleapis.com/auth/drive.file",
 ];
+const MAX_VISIBLE_SELECTION_ITEMS = 25;
 const NL_STOPWORDS = new Set([
   "de", "het", "een", "en", "van", "in", "op", "te", "met", "voor", "door", "tot", "bij", "aan", "of",
   "als", "dat", "die", "dit", "deze", "zijn", "haar", "hun", "je", "jij", "hij", "zij", "we", "wij",
@@ -135,6 +136,20 @@ function normalizeUserNotes(raw) {
     if (clean) normalized[goalId] = clean;
   });
   return normalized;
+}
+
+function withUniqueRowKeys(goals) {
+  const idCounters = new Map();
+  return goals.map((goal, index) => {
+    const baseId = String(goal?.id || `goal-${index + 1}`);
+    const nextCount = (idCounters.get(baseId) || 0) + 1;
+    idCounters.set(baseId, nextCount);
+    const rowKey = nextCount === 1 ? baseId : `${baseId}__${nextCount}`;
+    return {
+      ...goal,
+      rowKey,
+    };
+  });
 }
 
 async function apiFetchJson(url, options = {}) {
@@ -828,8 +843,8 @@ function applyFilters() {
   f = getActiveFilters();
   state.filtered = state.doelen.filter((d) => matchesFilters(d, f));
 
-  if (!state.filtered.some((d) => d.id === state.selectedId)) {
-    state.selectedId = state.filtered[0]?.id || null;
+  if (!state.filtered.some((d) => d.rowKey === state.selectedId)) {
+    state.selectedId = state.filtered[0]?.rowKey || null;
   }
 
   render();
@@ -885,15 +900,15 @@ function renderFilterChips(filters) {
   });
 }
 
-function removeGoalFromSelection(goalId) {
-  state.selection = state.selection.filter((id) => id !== goalId);
+function removeGoalFromSelection(rowKey) {
+  state.selection = state.selection.filter((key) => key !== rowKey);
 }
 
-function toggleGoalSelection(goalId) {
-  if (state.selection.includes(goalId)) {
-    removeGoalFromSelection(goalId);
+function toggleGoalSelection(rowKey) {
+  if (state.selection.includes(rowKey)) {
+    removeGoalFromSelection(rowKey);
   } else {
-    state.selection.push(goalId);
+    state.selection.push(rowKey);
   }
 }
 
@@ -901,8 +916,8 @@ function addAllFilteredToSelection() {
   if (!state.filtered.length) return;
   const selectionSet = new Set(state.selection);
   state.filtered.forEach((goal) => {
-    if (!selectionSet.has(goal.id)) {
-      selectionSet.add(goal.id);
+    if (!selectionSet.has(goal.rowKey)) {
+      selectionSet.add(goal.rowKey);
     }
   });
   state.selection = [...selectionSet];
@@ -912,7 +927,7 @@ function renderResults() {
   const selectedSet = new Set(state.selection);
   let selectedInFiltered = 0;
   state.filtered.forEach((goal) => {
-    if (selectedSet.has(goal.id)) selectedInFiltered += 1;
+    if (selectedSet.has(goal.rowKey)) selectedInFiltered += 1;
   });
   const remainingInFiltered = Math.max(0, state.filtered.length - selectedInFiltered);
 
@@ -934,8 +949,8 @@ function renderResults() {
   const list = state.filtered.slice(0, 400);
   list.forEach((d) => {
     const card = document.createElement("article");
-    card.className = `result-item ${d.id === state.selectedId ? "active" : ""}`;
-    const isSelected = selectedSet.has(d.id);
+    card.className = `result-item ${d.rowKey === state.selectedId ? "active" : ""}`;
+    const isSelected = selectedSet.has(d.rowKey);
     const btnClass = isSelected ? "select-btn selected" : "select-btn";
     const btnLabel = isSelected ? "🗑" : "+";
     const btnTitle = isSelected ? "Verwijder uit selectie" : "Voeg toe aan selectie";
@@ -954,12 +969,12 @@ function renderResults() {
     const selectBtn = card.querySelector(".select-btn");
     selectBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      toggleGoalSelection(d.id);
+      toggleGoalSelection(d.rowKey);
       render();
     });
 
     card.addEventListener("click", () => {
-      state.selectedId = d.id;
+      state.selectedId = d.rowKey;
       render();
     });
     els.resultList.appendChild(card);
@@ -999,10 +1014,10 @@ function getEditorState(goalId, field, effective) {
   return state.detailEditors[goalId][field];
 }
 
-function isFieldChanged(goalId, goal, field, editing = false) {
+function isFieldChanged(goalId, goal, field, editing = false, editorKey = goalId) {
   const original = getOriginalField(goal, field);
   if (editing) {
-    const draft = state.detailEditors[goalId]?.[field]?.draft || "";
+    const draft = state.detailEditors[editorKey]?.[field]?.draft || "";
     return draft.trim() !== original;
   }
   return getEffectiveField(goalId, goal, field).trim() !== original;
@@ -1013,18 +1028,20 @@ function formatMultiline(value) {
 }
 
 function renderDetail() {
-  const item = state.filtered.find((d) => d.id === state.selectedId);
+  const item = state.filtered.find((d) => d.rowKey === state.selectedId);
   if (!item) {
     els.detailView.innerHTML = '<p class="placeholder">Geen resultaat voor de huidige filters.</p>';
     return;
   }
+  const editorKey = item.rowKey;
+  const noteKey = item.id;
   const canEdit = canEditNotes();
-  const effectiveVoorbeelden = getEffectiveField(item.id, item, "voorbeelden");
-  const effectiveToelichting = getEffectiveField(item.id, item, "toelichting");
-  const effectiveWoordenschat = getEffectiveField(item.id, item, "woordenschat");
-  const voorbeeldenState = getEditorState(item.id, "voorbeelden", effectiveVoorbeelden);
-  const toelichtingState = getEditorState(item.id, "toelichting", effectiveToelichting);
-  const woordenschatState = getEditorState(item.id, "woordenschat", effectiveWoordenschat);
+  const effectiveVoorbeelden = getEffectiveField(noteKey, item, "voorbeelden");
+  const effectiveToelichting = getEffectiveField(noteKey, item, "toelichting");
+  const effectiveWoordenschat = getEffectiveField(noteKey, item, "woordenschat");
+  const voorbeeldenState = getEditorState(editorKey, "voorbeelden", effectiveVoorbeelden);
+  const toelichtingState = getEditorState(editorKey, "toelichting", effectiveToelichting);
+  const woordenschatState = getEditorState(editorKey, "woordenschat", effectiveWoordenschat);
   if (!canEdit) {
     voorbeeldenState.editing = false;
     toelichtingState.editing = false;
@@ -1034,9 +1051,9 @@ function renderDetail() {
   if (!toelichtingState.editing) toelichtingState.draft = effectiveToelichting;
   if (!woordenschatState.editing) woordenschatState.draft = effectiveWoordenschat;
 
-  const voorbeeldenChanged = isFieldChanged(item.id, item, "voorbeelden", voorbeeldenState.editing);
-  const toelichtingChanged = isFieldChanged(item.id, item, "toelichting", toelichtingState.editing);
-  const woordenschatChanged = isFieldChanged(item.id, item, "woordenschat", woordenschatState.editing);
+  const voorbeeldenChanged = isFieldChanged(noteKey, item, "voorbeelden", voorbeeldenState.editing, editorKey);
+  const toelichtingChanged = isFieldChanged(noteKey, item, "toelichting", toelichtingState.editing, editorKey);
+  const woordenschatChanged = isFieldChanged(noteKey, item, "woordenschat", woordenschatState.editing, editorKey);
   const voorbeeldenRefreshClass = canEdit && voorbeeldenChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
   const toelichtingRefreshClass = canEdit && toelichtingChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
   const woordenschatRefreshClass = canEdit && woordenschatChanged ? "mini-icon-btn" : "mini-icon-btn hidden";
@@ -1137,13 +1154,14 @@ function renderDetail() {
       ${resourceHtml}
     </section>
   `;
-  bindDetailEditors(item.id);
+  bindDetailEditors(item.rowKey);
 }
 
-function bindDetailEditors(goalId) {
-  const base = state.doelMap.get(goalId);
+function bindDetailEditors(goalKey) {
+  const base = state.doelMap.get(goalKey);
   if (!base) return;
   if (!canEditNotes()) return;
+  const noteKey = base.id;
   const toggleVoorbeeldenBtn = document.getElementById("toggleVoorbeeldenBtn");
   const toggleToelichtingBtn = document.getElementById("toggleToelichtingBtn");
   const toggleWoordenschatBtn = document.getElementById("toggleWoordenschatBtn");
@@ -1155,9 +1173,9 @@ function bindDetailEditors(goalId) {
   const woordenschatEl = document.getElementById("editWoordenschat");
 
   const setFieldValue = (field, value) => {
-    if (!state.userNotes[goalId]) state.userNotes[goalId] = {};
-    state.userNotes[goalId][field] = value.trim();
-    const note = state.userNotes[goalId];
+    if (!state.userNotes[noteKey]) state.userNotes[noteKey] = {};
+    state.userNotes[noteKey][field] = value.trim();
+    const note = state.userNotes[noteKey];
     const effectiveNote = {
       voorbeelden: Object.prototype.hasOwnProperty.call(note, "voorbeelden")
         ? String(note.voorbeelden ?? "")
@@ -1174,22 +1192,22 @@ function bindDetailEditors(goalId) {
       effectiveNote.toelichting === getOriginalField(base, "toelichting") &&
       effectiveNote.woordenschat === getOriginalField(base, "woordenschat")
     ) {
-      delete state.userNotes[goalId];
+      delete state.userNotes[noteKey];
     }
   };
 
   if (toggleVoorbeeldenBtn) {
     toggleVoorbeeldenBtn.addEventListener("click", async () => {
-      const editor = state.detailEditors[goalId].voorbeelden;
+      const editor = getEditorState(goalKey, "voorbeelden", getEffectiveField(noteKey, base, "voorbeelden"));
       if (!editor.editing) {
         editor.editing = true;
-        editor.draft = getEffectiveField(goalId, base, "voorbeelden");
+        editor.draft = getEffectiveField(noteKey, base, "voorbeelden");
         renderDetail();
       } else {
-        const beforeText = getEffectiveField(goalId, base, "voorbeelden");
+        const beforeText = getEffectiveField(noteKey, base, "voorbeelden");
         const afterText = String(editor.draft || "").trim();
         setFieldValue("voorbeelden", editor.draft);
-        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+        const saved = await saveSharedOverride(noteKey, state.userNotes[noteKey] || null, {
           goalTitle: base.leerplandoel,
           goalCode: base.code,
           changes: [{ field: "voorbeelden", beforeText, afterText }],
@@ -1204,16 +1222,16 @@ function bindDetailEditors(goalId) {
 
   if (toggleToelichtingBtn) {
     toggleToelichtingBtn.addEventListener("click", async () => {
-      const editor = state.detailEditors[goalId].toelichting;
+      const editor = getEditorState(goalKey, "toelichting", getEffectiveField(noteKey, base, "toelichting"));
       if (!editor.editing) {
         editor.editing = true;
-        editor.draft = getEffectiveField(goalId, base, "toelichting");
+        editor.draft = getEffectiveField(noteKey, base, "toelichting");
         renderDetail();
       } else {
-        const beforeText = getEffectiveField(goalId, base, "toelichting");
+        const beforeText = getEffectiveField(noteKey, base, "toelichting");
         const afterText = String(editor.draft || "").trim();
         setFieldValue("toelichting", editor.draft);
-        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+        const saved = await saveSharedOverride(noteKey, state.userNotes[noteKey] || null, {
           goalTitle: base.leerplandoel,
           goalCode: base.code,
           changes: [{ field: "toelichting", beforeText, afterText }],
@@ -1228,16 +1246,16 @@ function bindDetailEditors(goalId) {
 
   if (toggleWoordenschatBtn) {
     toggleWoordenschatBtn.addEventListener("click", async () => {
-      const editor = state.detailEditors[goalId].woordenschat;
+      const editor = getEditorState(goalKey, "woordenschat", getEffectiveField(noteKey, base, "woordenschat"));
       if (!editor.editing) {
         editor.editing = true;
-        editor.draft = getEffectiveField(goalId, base, "woordenschat");
+        editor.draft = getEffectiveField(noteKey, base, "woordenschat");
         renderDetail();
       } else {
-        const beforeText = getEffectiveField(goalId, base, "woordenschat");
+        const beforeText = getEffectiveField(noteKey, base, "woordenschat");
         const afterText = String(editor.draft || "").trim();
         setFieldValue("woordenschat", editor.draft);
-        const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+        const saved = await saveSharedOverride(noteKey, state.userNotes[noteKey] || null, {
           goalTitle: base.leerplandoel,
           goalCode: base.code,
           changes: [{ field: "woordenschat", beforeText, afterText }],
@@ -1252,12 +1270,12 @@ function bindDetailEditors(goalId) {
 
   if (resetVoorbeeldenBtn) {
     resetVoorbeeldenBtn.addEventListener("click", async () => {
-      const editor = state.detailEditors[goalId].voorbeelden;
-      const beforeText = getEffectiveField(goalId, base, "voorbeelden");
+      const editor = getEditorState(goalKey, "voorbeelden", getEffectiveField(noteKey, base, "voorbeelden"));
+      const beforeText = getEffectiveField(noteKey, base, "voorbeelden");
       const afterText = getOriginalField(base, "voorbeelden");
       editor.draft = getOriginalField(base, "voorbeelden");
       setFieldValue("voorbeelden", getOriginalField(base, "voorbeelden"));
-      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+      const saved = await saveSharedOverride(noteKey, state.userNotes[noteKey] || null, {
         goalTitle: base.leerplandoel,
         goalCode: base.code,
         changes: [{ field: "voorbeelden", beforeText, afterText }],
@@ -1271,12 +1289,12 @@ function bindDetailEditors(goalId) {
 
   if (resetToelichtingBtn) {
     resetToelichtingBtn.addEventListener("click", async () => {
-      const editor = state.detailEditors[goalId].toelichting;
-      const beforeText = getEffectiveField(goalId, base, "toelichting");
+      const editor = getEditorState(goalKey, "toelichting", getEffectiveField(noteKey, base, "toelichting"));
+      const beforeText = getEffectiveField(noteKey, base, "toelichting");
       const afterText = getOriginalField(base, "toelichting");
       editor.draft = getOriginalField(base, "toelichting");
       setFieldValue("toelichting", getOriginalField(base, "toelichting"));
-      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+      const saved = await saveSharedOverride(noteKey, state.userNotes[noteKey] || null, {
         goalTitle: base.leerplandoel,
         goalCode: base.code,
         changes: [{ field: "toelichting", beforeText, afterText }],
@@ -1290,12 +1308,12 @@ function bindDetailEditors(goalId) {
 
   if (resetWoordenschatBtn) {
     resetWoordenschatBtn.addEventListener("click", async () => {
-      const editor = state.detailEditors[goalId].woordenschat;
-      const beforeText = getEffectiveField(goalId, base, "woordenschat");
+      const editor = getEditorState(goalKey, "woordenschat", getEffectiveField(noteKey, base, "woordenschat"));
+      const beforeText = getEffectiveField(noteKey, base, "woordenschat");
       const afterText = getOriginalField(base, "woordenschat");
       editor.draft = getOriginalField(base, "woordenschat");
       setFieldValue("woordenschat", getOriginalField(base, "woordenschat"));
-      const saved = await saveSharedOverride(goalId, state.userNotes[goalId] || null, {
+      const saved = await saveSharedOverride(noteKey, state.userNotes[noteKey] || null, {
         goalTitle: base.leerplandoel,
         goalCode: base.code,
         changes: [{ field: "woordenschat", beforeText, afterText }],
@@ -1309,7 +1327,7 @@ function bindDetailEditors(goalId) {
 
   if (voorbeeldenEl) {
     voorbeeldenEl.addEventListener("input", () => {
-      state.detailEditors[goalId].voorbeelden.draft = voorbeeldenEl.value;
+      state.detailEditors[goalKey].voorbeelden.draft = voorbeeldenEl.value;
       const original = getOriginalField(base, "voorbeelden");
       resetVoorbeeldenBtn?.classList.toggle("hidden", voorbeeldenEl.value.trim() === original);
     });
@@ -1317,7 +1335,7 @@ function bindDetailEditors(goalId) {
 
   if (toelichtingEl) {
     toelichtingEl.addEventListener("input", () => {
-      state.detailEditors[goalId].toelichting.draft = toelichtingEl.value;
+      state.detailEditors[goalKey].toelichting.draft = toelichtingEl.value;
       const original = getOriginalField(base, "toelichting");
       resetToelichtingBtn?.classList.toggle("hidden", toelichtingEl.value.trim() === original);
     });
@@ -1325,7 +1343,7 @@ function bindDetailEditors(goalId) {
 
   if (woordenschatEl) {
     woordenschatEl.addEventListener("input", () => {
-      state.detailEditors[goalId].woordenschat.draft = woordenschatEl.value;
+      state.detailEditors[goalKey].woordenschat.draft = woordenschatEl.value;
       const original = getOriginalField(base, "woordenschat");
       resetWoordenschatBtn?.classList.toggle("hidden", woordenschatEl.value.trim() === original);
     });
@@ -1355,8 +1373,16 @@ function renderSelection() {
     return;
   }
 
-  state.selection.forEach((id) => {
-    const goal = state.doelMap.get(id);
+  if (state.selection.length > MAX_VISIBLE_SELECTION_ITEMS) {
+    els.selectionList.innerHTML = "<p class=\"placeholder\">meer dan 25 leerdoelen geselecteerd</p>";
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  const visibleSelectionKeys = state.selection.slice(0, MAX_VISIBLE_SELECTION_ITEMS);
+
+  visibleSelectionKeys.forEach((rowKey) => {
+    const goal = state.doelMap.get(rowKey);
     if (!goal) return;
 
     const row = document.createElement("div");
@@ -1370,7 +1396,7 @@ function renderSelection() {
     openBtn.className = "selection-open-btn";
     openBtn.textContent = goal.leerplandoel;
     openBtn.addEventListener("click", () => {
-      state.selectedId = goal.id;
+      state.selectedId = goal.rowKey;
       render();
     });
 
@@ -1385,7 +1411,7 @@ function renderSelection() {
     removeBtn.setAttribute("aria-label", "Verwijder uit selectie");
     removeBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      removeGoalFromSelection(goal.id);
+      removeGoalFromSelection(goal.rowKey);
       render();
     });
 
@@ -1393,8 +1419,10 @@ function renderSelection() {
     body.appendChild(meta);
     row.appendChild(body);
     row.appendChild(removeBtn);
-    els.selectionList.appendChild(row);
+    fragment.appendChild(row);
   });
+
+  els.selectionList.appendChild(fragment);
 }
 
 function formatLogTimestamp(value) {
@@ -1599,7 +1627,7 @@ function getGoalExportFields(goal) {
 
 function buildSelectionExportPayload(extra = {}) {
   const items = state.selection
-    .map((id) => state.doelMap.get(id))
+    .map((rowKey) => state.doelMap.get(rowKey))
     .filter(Boolean)
     .map((goal) => {
       const fields = getGoalExportFields(goal);
@@ -1729,8 +1757,8 @@ function buildSelectionDocsContent() {
   pushLabelLine("Aangemaakt op", generatedAt);
   push("\n");
 
-  state.selection.forEach((id, index) => {
-    const goal = state.doelMap.get(id);
+  state.selection.forEach((rowKey, index) => {
+    const goal = state.doelMap.get(rowKey);
     if (!goal) return;
     const fields = getGoalExportFields(goal);
 
@@ -1849,8 +1877,8 @@ function exportSelectionToTxt() {
     "",
   ];
 
-  state.selection.forEach((id, index) => {
-    const g = state.doelMap.get(id);
+  state.selection.forEach((rowKey, index) => {
+    const g = state.doelMap.get(rowKey);
     if (!g) return;
     const fields = getGoalExportFields(g);
     lines.push(`${index + 1}. ${g.leerplandoel}`);
@@ -1948,8 +1976,8 @@ async function init() {
   const goalsRes = await fetch("data/goals.json");
   const data = await goalsRes.json();
 
-  state.doelen = data.doelen;
-  state.doelMap = new Map(state.doelen.map((d) => [d.id, d]));
+  state.doelen = withUniqueRowKeys(data.doelen || []);
+  state.doelMap = new Map(state.doelen.map((d) => [d.rowKey, d]));
   state.suggestionIndex = buildSuggestionIndex(state.doelen);
   state.bronnen = data.bronnen || [];
   await loadSharedOverrides();
