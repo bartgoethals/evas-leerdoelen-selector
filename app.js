@@ -925,6 +925,28 @@ function addAllFilteredToSelection() {
   state.selection = [...selectionSet];
 }
 
+function isTextInputTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, select, button, [contenteditable='true']"));
+}
+
+function showAdjacentGoal(step) {
+  if (!state.filtered.length || !state.selectedId) return false;
+  const currentIndex = state.filtered.findIndex((goal) => goal.rowKey === state.selectedId);
+  if (currentIndex < 0) return false;
+  const nextIndex = currentIndex + step;
+  if (nextIndex < 0 || nextIndex >= state.filtered.length) return false;
+
+  state.selectedId = state.filtered[nextIndex].rowKey;
+  render();
+  window.requestAnimationFrame(() => {
+    els.resultList
+      .querySelector(".result-item.active")
+      ?.scrollIntoView({ block: "nearest" });
+  });
+  return true;
+}
+
 function renderResults() {
   const selectedSet = new Set(state.selection);
   let selectedInFiltered = 0;
@@ -2064,6 +2086,15 @@ function bindEvents() {
     void adminRevertLog(logId);
   });
   els.logoutBtn?.addEventListener("click", logout);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (isTextInputTarget(event.target)) return;
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    if (showAdjacentGoal(step)) {
+      event.preventDefault();
+    }
+  });
   window.addEventListener("load", () => {
     if (!state.auth.authenticated) {
       scheduleGoogleButtonRender();
