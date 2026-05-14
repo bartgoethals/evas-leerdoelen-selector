@@ -1653,17 +1653,34 @@ function buildMergedVocabularySelection() {
     const goal = state.doelMap.get(rowKey);
     if (!goal) return;
     const fields = getGoalExportFields(goal);
+    const fase = goal.fase || "-";
     extractVocabularyWords(fields.woordenschat).forEach((word) => {
       const key = word.toLocaleLowerCase("nl-BE");
       if (!uniqueByKey.has(key)) {
-        uniqueByKey.set(key, word);
+        uniqueByKey.set(key, {
+          word,
+          phases: new Set(),
+        });
       }
+      uniqueByKey.get(key).phases.add(fase);
     });
   });
 
-  return [...uniqueByKey.values()].sort((a, b) =>
-    a.localeCompare(b, "nl", { sensitivity: "base" })
+  return [...uniqueByKey.values()]
+    .map((entry) => ({
+      word: entry.word,
+      phases: [...entry.phases].sort((a, b) =>
+        a.localeCompare(b, "nl", { sensitivity: "base" })
+      ),
+    }))
+    .sort((a, b) =>
+      a.word.localeCompare(b.word, "nl", { sensitivity: "base" })
   );
+}
+
+function formatVocabularyExportLine(entry) {
+  const phases = entry.phases.length ? entry.phases.join(", ") : "-";
+  return `${entry.word} - Fase: ${phases}`;
 }
 
 function buildSelectionExportPayload(extra = {}) {
@@ -1949,8 +1966,8 @@ function exportSelectionToTxt() {
 function exportVocabularyToTxt() {
   if (!state.selection.length) return;
 
-  const words = buildMergedVocabularySelection();
-  if (!words.length) {
+  const vocabularyEntries = buildMergedVocabularySelection();
+  if (!vocabularyEntries.length) {
     alert("Geen woordenschat gevonden in de geselecteerde leerdoelen.");
     return;
   }
@@ -1960,7 +1977,7 @@ function exportVocabularyToTxt() {
     "Woordenlijst (samengevoegde selectie)",
     `Aangemaakt op: ${now.toLocaleString("nl-BE")}`,
     "",
-    ...words,
+    ...vocabularyEntries.map(formatVocabularyExportLine),
   ];
 
   const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
@@ -1976,7 +1993,7 @@ function exportVocabularyToTxt() {
   void logExportActivity("export_txt", {
     exportKind: "woordenschat",
     selectedGoalCount: state.selection.length,
-    vocabularyCount: words.length,
+    vocabularyCount: vocabularyEntries.length,
   });
 }
 
